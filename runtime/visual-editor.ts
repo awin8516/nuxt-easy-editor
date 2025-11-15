@@ -1,25 +1,6 @@
-interface Match {
-  file: string
-  line: number
-  context: string
-  originalContent: string
-}
-
-interface CssMatch {
-  file: string
-  selector: string
-  rules: string
-  line: number
-  context: string
-  isScoped?: boolean
-}
-
-interface EditorState {
-  element: HTMLElement | null
-  originalContent: string
-  matches: Match[]
-  isEditing: boolean
-}
+import type { Match, CssMatch, EditorState, SourceMap, VisualEditorRuntimeConfig } from './visual-editor-types'
+import { normalizePathname, buildPathCandidates, isPatternKey, patternToRegex, resolveSourceFiles } from './visual-editor-utils.js'
+import { removeScopedAttributes } from './utils/shared-utils'
 
 let editorState: EditorState = {
   element: null,
@@ -34,172 +15,9 @@ let hideButtonTimeout: number | null = null
 let currentButton: HTMLElement | null = null
 let highlightedElement: HTMLElement | null = null
 
-type SourceMap = Record<string, string[]>
 
-const wildcardRegexCache = new Map<string, RegExp>()
 
-interface VisualEditorRuntimeConfig {
-  tagKey: string | string[]
-  sourceMap: SourceMap
-  searchHtml?: boolean
-  editCSS?: boolean
-}
 
-declare const window: Window & typeof globalThis & {
-  __VISUAL_EDITOR_CONFIG__?: VisualEditorRuntimeConfig
-}
-
-function normalizePathname(pathname: string): string {
-  if (!pathname) return '/'
-
-  try {
-    pathname = decodeURIComponent(pathname)
-  } catch {
-    // ignore decoding errors and use original pathname
-  }
-
-  let normalized = pathname
-    .split('#')[0]
-    .split('?')[0]
-    .replace(/\\/g, '/')
-
-  if (!normalized.startsWith('/')) {
-    normalized = `/${normalized}`
-  }
-
-  if (normalized.endsWith('.html')) {
-    normalized = normalized.slice(0, -5)
-  }
-
-  if (normalized !== '/' && normalized.endsWith('/')) {
-    normalized = normalized.slice(0, -1)
-  }
-
-  if (normalized === '' || normalized === '/') {
-    return '/'
-  }
-
-  if (normalized.endsWith('/index')) {
-    const trimmed = normalized.slice(0, -6)
-    return trimmed === '' ? '/' : trimmed
-  }
-
-  if (normalized === '/index') {
-    return '/'
-  }
-
-  return normalized || '/'
-}
-
-function buildPathCandidates(pathname: string): string[] {
-  const normalized = normalizePathname(pathname)
-  const candidates = new Set<string>()
-
-  candidates.add(normalized)
-
-  if (normalized !== '/' && !normalized.endsWith('/')) {
-    candidates.add(`${normalized}/`)
-  }
-
-  if (normalized !== '/') {
-    const withoutIndex = normalized.replace(/\/index$/i, '') || '/'
-    candidates.add(withoutIndex === '' ? '/' : withoutIndex)
-  }
-
-  const segments = normalized.split('/').filter(Boolean)
-  if (segments.length > 0) {
-    const withoutLocale = `/${segments.slice(1).join('/')}`
-    candidates.add(withoutLocale === '//' ? '/' : withoutLocale || '/')
-  }
-
-  candidates.add('/')
-
-  return Array.from(candidates)
-}
-
-function isPatternKey(key: string): boolean {
-  if (!key.startsWith('/')) return false
-  return key.includes('*') || key.includes('[') || key.includes(':')
-}
-
-function patternToRegex(pattern: string): RegExp | null {
-  if (!isPatternKey(pattern)) {
-    return null
-  }
-
-  if (wildcardRegexCache.has(pattern)) {
-    return wildcardRegexCache.get(pattern) || null
-  }
-
-  const tokens: Array<{ placeholder: string; regex: string }> = []
-  let transformed = pattern
-
-  const replacers: Array<[RegExp, string]> = [
-    [/\[\.{3}([^\]/]+)\]/g, '__NUXT_CATCHALL__'],
-    [/\[\[\.{3}([^\]/]+)\]\]/g, '__NUXT_OPTIONAL_CATCHALL__'],
-    [/\[([^\]/]+)\]/g, '__NUXT_SEGMENT__'],
-    [/:([A-Za-z0-9_]+)/g, '__NUXT_DYNAMIC__']
-  ]
-
-  replacers.forEach(([regex, placeholder]) => {
-    transformed = transformed.replace(regex, (_, name) => {
-      let target = placeholder
-      if (placeholder === '__NUXT_CATCHALL__') {
-        target += '_CATCHALL'
-      } else if (placeholder === '__NUXT_OPTIONAL_CATCHALL__') {
-        target += '_OPTIONAL'
-      }
-      tokens.push({
-        placeholder: target,
-        regex:
-          placeholder === '__NUXT_CATCHALL__'
-            ? '(.+)'
-            : placeholder === '__NUXT_OPTIONAL_CATCHALL__'
-              ? '(?:.+)?'
-              : '([^/]+)'
-      })
-      return target
-    })
-  })
-
-  let escaped = escapeRegex(transformed)
-  escaped = escaped.replace(/\\\*/g, '.*')
-
-  tokens.forEach(({ placeholder, regex }) => {
-    escaped = escaped.replace(new RegExp(escapeRegex(placeholder), 'g'), regex)
-  })
-
-  const finalRegex = new RegExp(`^${escaped}$`)
-  wildcardRegexCache.set(pattern, finalRegex)
-  return finalRegex
-}
-
-function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
-  if (!sourceMap || typeof sourceMap !== 'object') {
-    return []
-  }
-
-  const candidates = buildPathCandidates(pathname)
-
-  for (const candidate of candidates) {
-    const directMatch = sourceMap[candidate]
-    if (Array.isArray(directMatch) && directMatch.length > 0) {
-      return directMatch
-    }
-  }
-
-  for (const key of Object.keys(sourceMap)) {
-    const pattern = patternToRegex(key)
-    if (pattern && candidates.some(candidate => pattern.test(candidate))) {
-      const files = sourceMap[key]
-      if (Array.isArray(files) && files.length > 0) {
-        return files
-      }
-    }
-  }
-
-  return []
-}
 
 // 检查元素是否可编辑（支持单个标识或数组）
 function isEditableElement(element: HTMLElement, tagKey: string | string[]): boolean {
@@ -246,6 +64,11 @@ export function initVisualEditor() {
 
   const tagKey = config.tagKey || 'easy-editor' // 支持字符串或字符串数组
   const sourceMap = config.sourceMap || {}
+
+  // 预编译所有sourceMap中的模式
+  Object.keys(sourceMap).forEach(pattern => {
+    patternToRegex(pattern)
+  })
 
   // 创建编辑器容器
   createEditorContainer()
@@ -547,14 +370,8 @@ function unescapeHtml(escaped: string): string {
   return textarea.value
 }
 
-// 移除 Vue scoped 注入的 data-v-* 属性，仅用于文件搜索与保存
-function removeScopedAttributes(html: string): string {
-  if (!html) return html
-  return html
-    .replace(/\sdata-v-[a-zA-Z0-9_-]+="[^"]*"/g, '')
-    .replace(/\sdata-v-[a-zA-Z0-9_-]+='[^']*'/g, '')
-    .replace(/\sdata-v-[a-zA-Z0-9_-]+(?![=a-zA-Z0-9_-])/g, '')
-}
+// removeScopedAttributes 函数已移至 shared-utils.ts 中
+// 此处保留注释以便参考
 
 // 启用内联编辑
 function enableInlineEdit(element: HTMLElement, originalContent: string, matches: Match[]) {
@@ -730,19 +547,26 @@ function highlightContent(text: string, searchText: string): string {
   
   // 转义 HTML 特殊字符，避免 XSS
   const escapeHtml = (str: string) => {
-    const div = document.createElement('div')
-    div.textContent = str
-    return div.innerHTML
+    return str.replace(/[&<>"]/g, (match) => {
+      switch (match) {
+        case '&': return '&amp;'
+        case '<': return '&lt;'
+        case '>': return '&gt;'
+        case '"': return '&quot;'
+        case "'": return '&#39;'
+        default: return match
+      }
+    })
   }
   
   // 转义文本中的 HTML
   const escapedText = escapeHtml(text)
   
-  // 转义搜索文本中的正则特殊字符
-  const escapedSearch = escapeRegex(searchText)
+  // 转义搜索文本中的正则特殊字符和 HTML
+  const safeSearchText = escapeRegex(escapeHtml(searchText))
   
   // 创建高亮正则（不区分大小写，全局匹配）
-  const regex = new RegExp(`(${escapedSearch})`, 'gi')
+  const regex = new RegExp(`(${safeSearchText})`, 'gi')
   
   // 高亮匹配的内容
   return escapedText.replace(regex, '<mark class="visual-editor-highlight-text">$1</mark>')
@@ -1254,11 +1078,44 @@ async function startEditCSS(element: HTMLElement) {
 
   // 搜索所有可能的文件（包括 Vue 文件中的 <style> 标签）
   // 不再过滤，让后端处理所有文件类型
-  const allFiles = sourceFiles
+  let allFiles = sourceFiles
 
+  // 如果没有配置sourceMap，提供回退选项
   if (allFiles.length === 0) {
     showNotification('未找到该页面对应的源文件配置，请在 nuxt.config.ts 中配置 sourceMap', 'warning')
-    return
+    
+    // 添加一个提示，告诉用户如何配置
+    const configHint = document.createElement('div')
+    configHint.className = 'visual-editor-config-hint'
+    configHint.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: white;
+      padding: 10px 15px;
+      border-radius: 4px;
+      z-index: 9999;
+      font-size: 14px;
+      max-width: 80%;
+    `
+    configHint.innerHTML = `
+      请在 nuxt.config.ts 中配置：
+      <pre style="background: #222; padding: 8px; border-radius: 4px; overflow-x: auto; margin: 5px 0;">
+      visualEditor: {
+        editCSS: true,
+        sourceMap: {
+          '/page-path': ['path/to/your/components/*.vue', 'path/to/your/css/*.css']
+        }
+      }
+      </pre>
+    `
+    document.body.appendChild(configHint)
+    setTimeout(() => configHint.remove(), 8000)
+    
+    // 为了演示目的，即使没有sourceMap，也尝试使用默认路径
+    allFiles = ['**/*.vue', '**/*.css']
   }
 
   // 搜索 CSS（包括 Vue 文件中的 <style> 标签）

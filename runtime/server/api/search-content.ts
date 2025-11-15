@@ -1,32 +1,7 @@
 import { readFileSync } from 'fs'
-import { resolve } from 'path'
-import fastGlob from 'fast-glob'
+
 import { defineEventHandler, readBody, createError } from 'h3'
-
-// 展开通配符路径
-async function expandGlobPattern(pattern: string): Promise<string[]> {
-  // 检查是否包含通配符
-  if (!pattern.includes('*') && !pattern.includes('?')) {
-    // 没有通配符，直接返回原路径
-    return [pattern]
-  }
-
-  try {
-    // 使用 fast-glob 展开通配符
-    // 如果路径是绝对路径，直接使用；否则相对于 cwd
-    const matchedFiles = await fastGlob(pattern, {
-      cwd: process.cwd(),
-      absolute: true,
-      onlyFiles: true,
-      ignore: ['node_modules/**']
-    })
-    return matchedFiles.length > 0 ? matchedFiles : []
-  } catch (error) {
-    // 如果 glob 失败，返回空数组（不匹配任何文件）
-    console.warn(`[Visual Editor] Glob pattern failed: ${pattern}`, error)
-    return []
-  }
-}
+import { resolveFilePath, expandGlobPattern, enhancedTrim, normalizeWhitespace } from '../../utils/server-utils'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -58,15 +33,13 @@ export default defineEventHandler(async (event) => {
   for (const filePath of expandedFiles) {
     try {
       // 解析文件路径（支持绝对路径和相对路径）
-      const resolvedPath = filePath.startsWith('/') || filePath.match(/^[A-Z]:/)
-        ? filePath
-        : resolve(process.cwd(), filePath)
+      const resolvedPath = resolveFilePath(filePath)
 
       const fileContent = readFileSync(resolvedPath, 'utf-8')
       const lines = fileContent.split('\n')
 
-      // 搜索匹配的内容
-      const searchContent = content.trim()
+      // 搜索匹配的内容，使用标准化空白字符函数处理
+  const searchContent = normalizeWhitespace(content)
       
       // 按行搜索
       for (let i = 0; i < lines.length; i++) {
@@ -105,10 +78,10 @@ export default defineEventHandler(async (event) => {
           if (line.includes('<') && line.includes('>')) {
             continue // 跳过包含 HTML 标签的行
           }
-          // 只搜索纯文本内容
-          const normalizedLine = line.replace(/\s+/g, ' ').trim()
-          const normalizedContent = searchContent.replace(/\s+/g, ' ').trim()
-          shouldMatch = normalizedLine.includes(normalizedContent)
+          // 只搜索纯文本内容，使用标准化空白字符函数
+          const trimmedLine = normalizeWhitespace(line)
+          const trimmedContent = normalizeWhitespace(searchContent)
+          shouldMatch = trimmedLine.includes(trimmedContent)
         }
         
         if (shouldMatch) {
@@ -126,8 +99,8 @@ export default defineEventHandler(async (event) => {
             for (const quoted of quoteMatch) {
               const quotedContent = quoted.slice(1, -1) // 移除引号
               // 检查是否包含搜索内容（考虑 HTML 实体变体）
-              const normalizedQuoted = quotedContent.trim()
-              const normalizedSearch = searchContent.trim()
+              const normalizedQuoted = normalizeWhitespace(quotedContent)
+              const normalizedSearch = normalizeWhitespace(searchContent)
               
               // 同时检查转义和未转义的版本
               if (normalizedQuoted.includes(normalizedSearch) || 
@@ -144,8 +117,8 @@ export default defineEventHandler(async (event) => {
           if (originalContent === searchContent) {
             const tagMatch = line.match(/>([^<]+)</)
             if (tagMatch) {
-              const tagContent = tagMatch[1].trim()
-              const normalizedSearch = searchContent.trim()
+              const tagContent = normalizeWhitespace(tagMatch[1])
+              const normalizedSearch = normalizeWhitespace(searchContent)
               if (tagContent.includes(normalizedSearch) || 
                   tagContent.includes(normalizedSearch.replace(/&amp;/g, '&')) ||
                   tagContent.includes(normalizedSearch.replace(/&/g, '&amp;'))) {
@@ -167,8 +140,8 @@ export default defineEventHandler(async (event) => {
           matches.push({
             file: filePath,
             line: lineNumber,
-            context: context.trim(),
-            originalContent: originalContent.trim()
+            context: enhancedTrim(context),
+            originalContent: normalizeWhitespace(originalContent)
           })
         }
       }

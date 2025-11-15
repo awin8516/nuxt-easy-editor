@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs'
-import { resolve } from 'path'
-import fastGlob from 'fast-glob'
+
 import { defineEventHandler, readBody, createError } from 'h3'
+import { resolveFilePath, expandGlobPattern } from '../../utils/server-utils'
 
 interface CssMatch {
   file: string
@@ -26,17 +26,7 @@ interface ElementInfo {
   selectorPath: string
 }
 
-// 展开 glob 模式
-async function expandGlobPattern(pattern: string): Promise<string[]> {
-  if (pattern.includes('*') || pattern.includes('**')) {
-    const files = await fastGlob(pattern, {
-      cwd: process.cwd(),
-      absolute: true
-    })
-    return files
-  }
-  return [pattern]
-}
+// 展开 glob 模式已迁移到 shared-utils.ts
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -76,9 +66,7 @@ export default defineEventHandler(async (event) => {
 
   for (const filePath of uniqueFiles) {
     try {
-      const resolvedPath = filePath.startsWith('/') || filePath.match(/^[A-Z]:/)
-        ? filePath
-        : resolve(process.cwd(), filePath)
+      const resolvedPath = resolveFilePath(filePath)
 
       const fileContent = readFileSync(resolvedPath, 'utf-8')
       

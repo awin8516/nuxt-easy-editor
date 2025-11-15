@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'fs'
-import { resolve } from 'path'
 import { defineEventHandler, readBody, createError } from 'h3'
+import { resolveFilePath } from '../../utils/server-utils'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -15,9 +15,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // 解析文件路径
-    const resolvedPath = file.startsWith('/') || file.match(/^[A-Z]:/)
-      ? file
-      : resolve(process.cwd(), file)
+    const resolvedPath = resolveFilePath(file)
 
     // 读取文件
     let fileContent = readFileSync(resolvedPath, 'utf-8')

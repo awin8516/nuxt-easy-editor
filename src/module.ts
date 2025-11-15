@@ -79,18 +79,16 @@ export default defineNuxtModule<VisualEditorConfig>({
         handler: resolveRuntimeFile('server/api/search-content')
       })
 
-      // 添加 CSS 编辑相关的 API 路由（仅在 editCSS 为 true 时）
-      if (options.editCSS) {
-        addServerHandler({
-          route: '/api/visual-editor/search-css',
-          handler: resolveRuntimeFile('server/api/search-css')
-        })
+      // 添加 CSS 编辑相关的 API 路由
+      addServerHandler({
+        route: '/api/visual-editor/search-css',
+        handler: resolveRuntimeFile('server/api/search-css')
+      })
 
-        addServerHandler({
-          route: '/api/visual-editor/update-css',
-          handler: resolveRuntimeFile('server/api/update-css')
-        })
-      }
+      addServerHandler({
+        route: '/api/visual-editor/update-css',
+        handler: resolveRuntimeFile('server/api/update-css')
+      })
     }
   }
 })
