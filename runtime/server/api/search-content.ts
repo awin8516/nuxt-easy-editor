@@ -112,8 +112,8 @@ export default defineEventHandler(async (event) => {
             if (quoteMatch) {
               for (const quoted of quoteMatch) {
                 const quotedContent = quoted.slice(1, -1) // 移除引号
-                const normalizedQuoted = quotedContent.replace(/\s+/g, ' ').trim()
-                const normalizedSearch = searchContent.replace(/\s+/g, ' ').trim()
+                const normalizedQuoted = quotedContent.replace(/[\s\u00a0]+/g, ' ').trim()
+                const normalizedSearch = searchContent.replace(/[\s\u00a0]+/g, ' ').trim()
                 if (normalizedQuoted.includes(normalizedSearch)) {
                   shouldMatch = true
                   // 尝试从引号中提取原始内容
@@ -126,8 +126,8 @@ export default defineEventHandler(async (event) => {
           
           // 如果没有在引号中找到，执行普通的文本搜索
           if (!shouldMatch) {
-            const normalizedLine = line.replace(/\s+/g, ' ').trim()
-            const normalizedContent = searchContent.replace(/\s+/g, ' ').trim()
+            const normalizedLine = line.replace(/[\s\u00a0]+/g, ' ').trim()
+            const normalizedContent = searchContent.replace(/[\s\u00a0]+/g, ' ').trim()
             shouldMatch = normalizedLine.includes(normalizedContent)
           }
         }
@@ -147,8 +147,8 @@ export default defineEventHandler(async (event) => {
             for (const quoted of quoteMatch) {
               const quotedContent = quoted.slice(1, -1) // 移除引号
               // 检查是否包含搜索内容（考虑 HTML 实体变体）
-              const normalizedQuoted = quotedContent.trim()
-              const normalizedSearch = searchContent.trim()
+              const normalizedQuoted = quotedContent.replace(/[\s\u00a0]+/g, ' ').trim()
+              const normalizedSearch = searchContent.replace(/[\s\u00a0]+/g, ' ').trim()
               
               // 同时检查转义和未转义的版本
               if (normalizedQuoted.includes(normalizedSearch) || 

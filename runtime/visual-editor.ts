@@ -486,8 +486,20 @@ async function startEdit(element: HTMLElement) {
     return
   }
 
-  // 搜索内容
-  const matches = await searchContent(originalContent.trim(), sourceFiles, searchHtml)
+  // 搜索内容 - 使用更全面的空白字符处理，包括移除U+00a0非断空格字符
+  // 打印originalContent到控制台便于调试
+  console.log('Original Content:', "["+originalContent+"]");
+  
+  // 更全面的空白字符处理：
+  // 1. 首先移除HTML实体形式的非断空格
+  // 2. 然后移除各种空白字符（包括普通空格和U+00a0非断空格）
+  const processedContent = originalContent
+    .replace(/&nbsp;/g, '')  // 移除HTML实体形式的非断空格
+    .replace(/[\s\u00a0]+$/g, '')  // 移除结尾的所有空白字符
+    .replace(/^[\s\u00a0]+/g, '');  // 移除开头的所有空白字符
+  
+  console.log('Processed Content:', "["+processedContent+"]");
+  const matches = await searchContent(processedContent, sourceFiles, searchHtml)
 
   if (matches.length === 0) {
     showNotification('未在源文件中找到该内容，无法保存到本地文件', 'warning')
@@ -656,8 +668,10 @@ async function handleSave(element: HTMLElement) {
     newContent = escapedContent.replace(/&lt;(\/?)([a-zA-Z][a-zA-Z0-9]*)(\s[^&]*?)?&gt;/g, '<$1$2$3>')
     
     // 将 &amp; 还原为 &（因为文件中的 & 不需要转义）
-    // 但保留其他 HTML 实体（如 &lt;、&gt; 等，但这些应该已经被上面的正则处理了）
     newContent = newContent.replace(/&amp;/g, '&')
+    
+    // 将 &nbsp; 转换为普通空格，确保空格不被转义
+    newContent = newContent.replace(/&nbsp;/g, ' ')
     
     // 将实际的换行符（\n）转换为 <br> 标签
     newContent = newContent.replace(/\n/g, '<br>')

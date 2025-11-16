@@ -104,16 +104,16 @@ export default defineEventHandler(async (event) => {
       
       // 方法4：模糊匹配（忽略空白字符）
       if (!matched) {
-        const normalizedLine = targetLine.replace(/\s+/g, ' ')
+        const normalizedLine = targetLine.replace(/[\s\u00a0]+/g, ' ')
         for (const variant of matchVariants) {
-          const normalizedSearch = variant.replace(/\s+/g, ' ')
+          const normalizedSearch = variant.replace(/[\s\u00a0]+/g, ' ')
           if (normalizedLine.includes(normalizedSearch)) {
             const matchIndex = normalizedLine.indexOf(normalizedSearch)
             // 找到原始位置
             let charCount = 0
             let startIndex = 0
             for (let i = 0; i < targetLine.length; i++) {
-              const normalizedChar = targetLine[i].replace(/\s+/g, ' ')
+              const normalizedChar = targetLine[i].replace(/[\s\u00a0]+/g, ' ')
               if (normalizedChar) {
                 if (charCount === matchIndex) {
                   startIndex = i
@@ -127,7 +127,7 @@ export default defineEventHandler(async (event) => {
             let endIndex = startIndex
             let contentLength = 0
             for (let i = startIndex; i < targetLine.length && contentLength < normalizedSearch.length; i++) {
-              const normalizedChar = targetLine[i].replace(/\s+/g, ' ')
+              const normalizedChar = targetLine[i].replace(/[\s\u00a0]+/g, ' ')
               if (normalizedChar) {
                 contentLength++
                 endIndex = i + 1
