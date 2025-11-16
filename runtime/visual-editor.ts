@@ -29,7 +29,6 @@ let editorState: EditorState = {
 }
 
 let editorComponent: any = null
-let editorContainer: HTMLElement | null = null
 let hideButtonTimeout: number | null = null
 let currentButton: HTMLElement | null = null
 let highlightedElement: HTMLElement | null = null
@@ -248,7 +247,7 @@ export function initVisualEditor() {
   const sourceMap = config.sourceMap || {}
 
   // 创建编辑器容器
-  createEditorContainer()
+
 
   // 监听鼠标事件 - 使用事件委托
   document.addEventListener('mouseover', (e) => {
@@ -297,11 +296,7 @@ export function initVisualEditor() {
   console.log('[Visual Editor] Initialized')
 }
 
-function createEditorContainer() {
-  editorContainer = document.createElement('div')
-  editorContainer.id = 'visual-editor-container'
-  document.body.appendChild(editorContainer)
-}
+
 
 function showEditButton(element: HTMLElement) {
   clearHideButtonTimeout()
@@ -458,10 +453,17 @@ async function startEdit(element: HTMLElement) {
   const sanitizedHtmlContent = removeScopedAttributes(rawHtmlContent)
 
   // 如果 searchHtml 为 false，检查是否包含 HTML 标签
-  if (!searchHtml && sanitizedHtmlContent !== textContent) {
-    // 内容中包含 HTML 标签，但 searchHtml 为 false，提示用户
-    showNotification('内容包含 HTML 标签，请设置 searchHtml: true 来搜索', 'warning')
-    return
+  // 更准确的HTML标签检测：不仅比较字符串，还要检查是否真正包含HTML标签
+  if (!searchHtml) {
+    // 尝试更精确地检测HTML标签
+    const hasActualHtmlTags = /<[^>]+>/g.test(sanitizedHtmlContent)
+    
+    // 只在确实包含HTML标签时才提示警告
+    // 避免因为特殊字符（如U+00a0非断行空格）导致的误判
+    if (hasActualHtmlTags) {
+      showNotification('内容包含 HTML 标签，请设置 searchHtml: true 来搜索', 'warning')
+      return
+    }
   }
 
   // 根据 searchHtml 配置获取内容

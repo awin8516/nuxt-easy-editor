@@ -101,14 +101,35 @@ export default defineEventHandler(async (event) => {
           shouldMatch = Array.from(searchVariants).some(variant => normalizedLine.includes(variant))
         } else {
           // 只搜索纯文本
-          // 如果行中包含 HTML 标签，跳过这一行
+          // 更智能地检测真正的HTML标签，而不是简单跳过包含<>的行
+          // 提取行中的纯文本内容（去除可能的HTML标签）
+          let textOnly = line
+          
+          // 如果行看起来包含HTML标签，尝试提取纯文本
           if (line.includes('<') && line.includes('>')) {
-            continue // 跳过包含 HTML 标签的行
+            // 尝试从引号中提取文本内容（可能是模板字符串中的文本）
+            const quoteMatch = line.match(/'([^']*?)'/g) || line.match(/"([^"]*?)"/g)
+            if (quoteMatch) {
+              for (const quoted of quoteMatch) {
+                const quotedContent = quoted.slice(1, -1) // 移除引号
+                const normalizedQuoted = quotedContent.replace(/\s+/g, ' ').trim()
+                const normalizedSearch = searchContent.replace(/\s+/g, ' ').trim()
+                if (normalizedQuoted.includes(normalizedSearch)) {
+                  shouldMatch = true
+                  // 尝试从引号中提取原始内容
+                  originalContent = quotedContent
+                  break
+                }
+              }
+            }
           }
-          // 只搜索纯文本内容
-          const normalizedLine = line.replace(/\s+/g, ' ').trim()
-          const normalizedContent = searchContent.replace(/\s+/g, ' ').trim()
-          shouldMatch = normalizedLine.includes(normalizedContent)
+          
+          // 如果没有在引号中找到，执行普通的文本搜索
+          if (!shouldMatch) {
+            const normalizedLine = line.replace(/\s+/g, ' ').trim()
+            const normalizedContent = searchContent.replace(/\s+/g, ' ').trim()
+            shouldMatch = normalizedLine.includes(normalizedContent)
+          }
         }
         
         if (shouldMatch) {
