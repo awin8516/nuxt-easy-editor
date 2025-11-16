@@ -326,8 +326,9 @@ function showEditButton(element: HTMLElement) {
   // 创建按钮容器
   const buttonContainer = document.createElement('div')
   buttonContainer.className = 'visual-editor-btn-container'
-  buttonContainer.style.top = `${rect.top + window.scrollY}px`
-  buttonContainer.style.left = `${rect.right + window.scrollX - 5}px`
+  // 利用position: fixed特性，直接设置相对于视口的位置
+  buttonContainer.style.top = `${rect.top}px`
+  buttonContainer.style.left = `${rect.right - 5}px`
 
   if (!shouldHideContentButton) {
     // 内容编辑按钮
@@ -596,8 +597,8 @@ function enableInlineEdit(element: HTMLElement, originalContent: string, matches
   // 创建保存按钮
   const saveBtn = createSaveButton(element, matches)
   const rect = element.getBoundingClientRect()
-  saveBtn.style.top = `${rect.bottom + window.scrollY + 10}px`
-  saveBtn.style.left = `${rect.left + window.scrollX}px`
+  saveBtn.style.top = `${rect.bottom + 10}px`
+  saveBtn.style.left = `${rect.left}px`
   document.body.appendChild(saveBtn)
   
   // 保存按钮引用
@@ -629,8 +630,16 @@ function enableInlineEdit(element: HTMLElement, originalContent: string, matches
     }
   }
   
+  // 监听键盘事件
   element.addEventListener('keydown', handleKeyDown)
   ;(element as any).__keydownHandler = handleKeyDown
+  
+  // 监听失焦事件，实现与ESC键相同的取消编辑功能
+  const handleBlur = () => {
+    cancelEdit(element)
+  }
+  element.addEventListener('blur', handleBlur)
+  ;(element as any).__blurHandler = handleBlur
 }
 
 // 创建保存按钮
@@ -645,8 +654,9 @@ function createSaveButton(element: HTMLElement, matches: Match[]): HTMLElement {
   const saveBtn = btn.querySelector('.visual-editor-save-btn__save') as HTMLElement
   const cancelBtn = btn.querySelector('.visual-editor-save-btn__cancel') as HTMLElement
   
-  saveBtn.onclick = () => handleSave(element)
-  cancelBtn.onclick = () => cancelEdit(element)
+  // 使用mousedown事件代替click事件，确保在blur触发前执行保存操作
+  saveBtn.onmousedown = () => handleSave(element)
+  cancelBtn.onmousedown = () => cancelEdit(element)
   
   return btn
 }
@@ -723,15 +733,23 @@ function cancelEdit(element: HTMLElement) {
     saveBtn.remove()
   }
   
+  // 移除键盘事件监听器
   const keydownHandler = (element as any).__keydownHandler
   if (keydownHandler) {
     element.removeEventListener('keydown', keydownHandler)
+  }
+  
+  // 移除失焦事件监听器
+  const blurHandler = (element as any).__blurHandler
+  if (blurHandler) {
+    element.removeEventListener('blur', blurHandler)
   }
   
   delete (element as any).__saveButton
   delete (element as any).__originalContent
   delete (element as any).__matches
   delete (element as any).__keydownHandler
+  delete (element as any).__blurHandler
   delete (element as any).__selectedMatchIndex
   delete (element as any).__searchHtml
   delete (element as any).__domOriginalContent
