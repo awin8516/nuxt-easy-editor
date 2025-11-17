@@ -3,11 +3,28 @@ import { resolve } from 'path'
 import fastGlob from 'fast-glob'
 import { defineEventHandler, readBody, createError } from 'h3'
 
-// 展开通配符路径
-async function expandGlobPattern(pattern: string): Promise<string[]> {
+// 用于收集服务器端日志信息
+interface ServerLog {
+  type: 'log' | 'warn' | 'error'
+  message: string
+  data?: any
+}
+
+/**
+ * 展开通配符路径，将包含通配符的路径转换为匹配的具体文件路径列表
+ * @param pattern 文件路径模式，可能包含通配符
+ * @param logs 日志收集数组，用于记录处理过程
+ * @returns 匹配的文件路径数组
+ */
+async function expandGlobPattern(pattern: string, logs: ServerLog[]): Promise<string[]> {
   // 检查是否包含通配符
   if (!pattern.includes('*') && !pattern.includes('?')) {
     // 没有通配符，直接返回原路径
+    logs.push({
+      type: 'log',
+      message: '【没有通配符，直接返回原路径】',
+      data: pattern
+    })
     return [pattern]
   }
 
@@ -20,15 +37,38 @@ async function expandGlobPattern(pattern: string): Promise<string[]> {
       onlyFiles: true,
       ignore: ['node_modules/**']
     })
+    logs.push({
+      type: 'log',
+      message: '【matchedFiles】',
+      data: matchedFiles
+    })
     return matchedFiles.length > 0 ? matchedFiles : []
   } catch (error) {
     // 如果 glob 失败，返回空数组（不匹配任何文件）
-    console.warn(`[Visual Editor] Glob pattern failed: ${pattern}`, error)
+    logs.push({
+      type: 'warn',
+      message: `[Visual Editor] Glob pattern failed: ${pattern}`,
+      data: error
+    })
     return []
   }
 }
 
+/**
+ * API事件处理函数，处理内容搜索请求
+ * @param event H3事件对象，包含请求信息
+ * @returns 包含匹配结果和服务器日志的响应对象
+ */
 export default defineEventHandler(async (event) => {
+  // 创建日志数组
+  const logs: ServerLog[] = []
+  
+  logs.push({
+    type: 'log',
+    message: '【event】',
+    data: event
+  })
+  
   const body = await readBody(event)
   const { content, files, searchHtml } = body
 
@@ -51,10 +91,16 @@ export default defineEventHandler(async (event) => {
   // 展开所有文件路径（包括通配符）
   const expandedFiles: string[] = []
   for (const filePath of files) {
-    const expanded = await expandGlobPattern(filePath)
+    const expanded = await expandGlobPattern(filePath, logs)
     expandedFiles.push(...expanded)
   }
 
+  logs.push({
+    type: 'log',
+    message: '【expandedFiles】',
+    data: expandedFiles
+  })
+  
   for (const filePath of expandedFiles) {
     try {
       // 解析文件路径（支持绝对路径和相对路径）
@@ -67,7 +113,11 @@ export default defineEventHandler(async (event) => {
 
       // 搜索匹配的内容
       const searchContent = content.trim()
-      
+      logs.push({
+        type: 'log',
+        message: '【searchContent】',
+        data: searchContent
+      })
       // 按行搜索
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
@@ -196,14 +246,19 @@ export default defineEventHandler(async (event) => {
     } catch (error: any) {
       // 如果是文件不存在错误，静默跳过（可能是通配符匹配到的路径不存在）
       if (error.code !== 'ENOENT') {
-        console.error(`[Visual Editor] Error reading file ${filePath}:`, error.message)
+        logs.push({
+          type: 'error',
+          message: `[Visual Editor] Error reading file ${filePath}:`,
+          data: error.message
+        })
       }
       // 继续处理其他文件
     }
   }
 
   return {
-    matches
+    matches,
+    serverLogs: logs
   }
 })
 

@@ -48,6 +48,11 @@ declare const window: Window & typeof globalThis & {
   __VISUAL_EDITOR_CONFIG__?: VisualEditorRuntimeConfig
 }
 
+/**
+ * 规范化路径名，处理各种路径格式转换和标准化
+ * @param pathname 原始路径名
+ * @returns 规范化后的路径名
+ */
 function normalizePathname(pathname: string): string {
   if (!pathname) return '/'
 
@@ -90,6 +95,11 @@ function normalizePathname(pathname: string): string {
   return normalized || '/'
 }
 
+/**
+ * 构建路径候选列表，生成可能的路径变体
+ * @param pathname 原始路径名
+ * @returns 路径候选数组
+ */
 function buildPathCandidates(pathname: string): string[] {
   const normalized = normalizePathname(pathname)
   const candidates = new Set<string>()
@@ -126,11 +136,21 @@ function buildPathCandidates(pathname: string): string[] {
   return Array.from(candidates)
 }
 
+/**
+ * 判断一个键是否为路径模式（包含通配符或动态段）
+ * @param key 要检查的键
+ * @returns 是否为路径模式
+ */
 function isPatternKey(key: string): boolean {
   if (!key.startsWith('/')) return false
   return key.includes('*') || key.includes('[') || key.includes(':')
 }
 
+/**
+ * 将路径模式转换为正则表达式
+ * @param pattern 路径模式
+ * @returns 对应的正则表达式或null
+ */
 function patternToRegex(pattern: string): RegExp | null {
   if (!isPatternKey(pattern)) {
     return null
@@ -185,8 +205,15 @@ function patternToRegex(pattern: string): RegExp | null {
   return finalRegex
 }
 
+/**
+ * 根据当前路径解析对应的源文件列表
+ * @param pathname 当前页面路径
+ * @param sourceMap 源文件映射配置
+ * @returns 匹配的源文件路径数组
+ */
 function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
   if (!sourceMap || typeof sourceMap !== 'object') {
+    console.log('【未在nuxt.config.ts中查询到有效源文件映射配置】:', sourceMap)
     return []
   }
 
@@ -198,7 +225,7 @@ function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
     const directMatch = sourceMap[candidate]
     if (Array.isArray(directMatch) && directMatch.length > 0) {
       // 打印查找到的本地文件列表
-      console.log('【尝试直接匹配路径】:', directMatch)
+      console.log('【尝试直接匹配路径】:', '"'+candidate+'" : ', "["+directMatch.join(", ")+"]")
       return directMatch
     }
   }
@@ -214,7 +241,7 @@ function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
       const files = sourceMap[key]
       if (Array.isArray(files) && files.length > 0) {
         // 打印查找到的本地文件列表
-        console.log('【尝试模式匹配2】:', files)        
+        console.log('【尝试通配模式匹配】:', '"'+key+'" : ', "["+files.join(", ")+"]")
         return files
       }
     }
@@ -224,14 +251,19 @@ function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
   const defaultFiles = sourceMap['default']
   if (Array.isArray(defaultFiles) && defaultFiles.length > 0) {
     // 打印查找到的本地文件列表
-    console.log('【default配置】:', defaultFiles)
+    console.log('【default配置】:', '"default" : ', "["+defaultFiles.join(", ")+"]")
     return defaultFiles
   }
 
   return []
 }
 
-// 检查元素是否可编辑（支持单个标识或数组）
+/**
+ * 检查元素是否可编辑
+ * @param element 要检查的DOM元素
+ * @param tagKey 可编辑标识（字符串或字符串数组）
+ * @returns 元素是否可编辑
+ */
 function isEditableElement(element: HTMLElement, tagKey: string | string[]): boolean {
   // 排除位于抽屉弹窗内的元素
   if (element.closest('.visual-editor-drawer')) {
@@ -256,7 +288,12 @@ function isEditableElement(element: HTMLElement, tagKey: string | string[]): boo
   return false
 }
 
-// 查找可编辑的父元素（支持单个标识或数组）
+/**
+ * 查找可编辑的父元素
+ * @param element 起始DOM元素
+ * @param tagKey 可编辑标识（字符串或字符串数组）
+ * @returns 找到的可编辑元素或null
+ */
 function findEditableElement(element: HTMLElement, tagKey: string | string[]): HTMLElement | null {
   let current: HTMLElement | null = element
   
@@ -270,6 +307,9 @@ function findEditableElement(element: HTMLElement, tagKey: string | string[]): H
   return null
 }
 
+/**
+ * 初始化可视化编辑器
+ */
 export function initVisualEditor() {
   if (typeof window === 'undefined') return
 
@@ -334,6 +374,10 @@ export function initVisualEditor() {
 
 
 
+/**
+ * 在可编辑元素旁显示编辑按钮
+ * @param element 可编辑的DOM元素
+ */
 function showEditButton(element: HTMLElement) {
   clearHideButtonTimeout()
   hideEditButton()
@@ -437,6 +481,9 @@ function showEditButton(element: HTMLElement) {
   editorState.element = element
 }
 
+/**
+ * 清除编辑按钮的隐藏计时器
+ */
 function clearHideButtonTimeout() {
   if (hideButtonTimeout !== null) {
     clearTimeout(hideButtonTimeout)
@@ -444,6 +491,9 @@ function clearHideButtonTimeout() {
   }
 }
 
+/**
+ * 安排编辑按钮的隐藏
+ */
 function scheduleHideButton() {
   clearHideButtonTimeout()
   hideButtonTimeout = window.setTimeout(() => {
@@ -451,14 +501,19 @@ function scheduleHideButton() {
   }, 20) // 200ms 延迟，给用户时间移到按钮上
 }
 
-// 添加高亮效果
+/**
+ * 高亮显示元素
+ * @param element 要高亮的DOM元素
+ */
 function highlightElement(element: HTMLElement) {
   removeHighlight()
   element.classList.add('visual-editor-highlight')
   highlightedElement = element
 }
 
-// 移除高亮效果
+/**
+ * 移除元素的高亮效果
+ */
 function removeHighlight() {
   if (highlightedElement) {
     // 移除双击事件监听器
@@ -473,6 +528,9 @@ function removeHighlight() {
   }
 }
 
+/**
+ * 隐藏编辑按钮
+ */
 function hideEditButton() {
   clearHideButtonTimeout()
   removeHighlight()
@@ -492,6 +550,10 @@ function hideEditButton() {
   }
 }
 
+/**
+ * 开始编辑元素内容
+ * @param element 要编辑的DOM元素
+ */
 async function startEdit(element: HTMLElement) {
   hideEditButton()
   removeHighlight()
@@ -607,6 +669,20 @@ async function startEdit(element: HTMLElement) {
   }
 }
 
+// 定义服务器日志接口
+interface ServerLog {
+  type: 'log' | 'warn' | 'error'
+  message: string
+  data?: any
+}
+
+/**
+ * 在源代码中搜索特定内容
+ * @param content 要搜索的内容
+ * @param sourceFiles 源文件路径数组
+ * @param searchHtml 是否在HTML中搜索（默认false）
+ * @returns 匹配结果Promise数组
+ */
 async function searchContent(content: string, sourceFiles: string[], searchHtml: boolean = false): Promise<Match[]> {
   try {
     const response = await fetch('/api/visual-editor/search-content', {
@@ -626,6 +702,24 @@ async function searchContent(content: string, sourceFiles: string[], searchHtml:
     }
 
     const data = await response.json()
+    
+    // 打印服务器返回的日志到浏览器控制台
+    if (data.serverLogs && Array.isArray(data.serverLogs)) {
+      data.serverLogs.forEach((log: ServerLog) => {
+        // 在浏览器控制台中使用不同颜色标识不同类型的日志
+        const consoleColor = log.type === 'error' ? 'color: red' : log.type === 'warn' ? 'color: orange' : 'color: blue'
+        console.groupCollapsed(`%c[Server ${log.type.toUpperCase()}] ${log.message}`, consoleColor)
+        if (log.data !== undefined) {
+          if (typeof log.data === 'string' || typeof log.data === 'number') {
+            console.log(`%c${log.data}`, consoleColor)
+          } else {
+            console.log(log.data)
+          }
+        }
+        console.groupEnd()
+      })
+    }
+    
     return data.matches || []
   } catch (error) {
     console.error('[Visual Editor] Search error:', error)
@@ -633,21 +727,33 @@ async function searchContent(content: string, sourceFiles: string[], searchHtml:
   }
 }
 
-// HTML 转义函数
+/**
+ * HTML转义函数
+ * @param html 要转义的HTML内容
+ * @returns 转义后的字符串
+ */
 function escapeHtml(html: string): string {
   const div = document.createElement('div')
   div.textContent = html
   return div.innerHTML
 }
 
-// HTML 反转义函数（将转义的文本还原为 HTML，如 &lt;br&gt; 转为 <br>）
+/**
+ * HTML反转义函数
+ * @param escaped 已转义的HTML内容
+ * @returns 反转义后的HTML字符串
+ */
 function unescapeHtml(escaped: string): string {
   const textarea = document.createElement('textarea')
   textarea.innerHTML = escaped
   return textarea.value
 }
 
-// 移除 Vue scoped 注入的 data-v-* 属性，仅用于文件搜索与保存
+/**
+ * 移除Vue scoped注入的data-v-*属性
+ * @param html HTML内容
+ * @returns 移除scoped属性后的HTML
+ */
 function removeScopedAttributes(html: string): string {
   if (!html) return html
   return html
@@ -656,7 +762,12 @@ function removeScopedAttributes(html: string): string {
     .replace(/\sdata-v-[a-zA-Z0-9_-]+(?![=a-zA-Z0-9_-])/g, '')
 }
 
-// 启用内联编辑
+/**
+ * 启用内联编辑功能
+ * @param element 要编辑的DOM元素
+ * @param originalContent 原始内容
+ * @param matches 匹配结果数组
+ */
 function enableInlineEdit(element: HTMLElement, originalContent: string, matches: Match[]) {
   const config = window.__VISUAL_EDITOR_CONFIG__
   const searchHtml = config?.searchHtml || false
@@ -727,7 +838,12 @@ function enableInlineEdit(element: HTMLElement, originalContent: string, matches
   ;(element as any).__blurHandler = handleBlur
 }
 
-// 创建保存按钮
+/**
+ * 创建保存按钮
+ * @param element 编辑的DOM元素
+ * @param matches 匹配结果数组
+ * @returns 创建的保存按钮容器元素
+ */
 function createSaveButton(element: HTMLElement, matches: Match[]): HTMLElement {
   const btn = document.createElement('div')
   btn.className = 'visual-editor-save-btn'
@@ -746,7 +862,10 @@ function createSaveButton(element: HTMLElement, matches: Match[]): HTMLElement {
   return btn
 }
 
-// 处理保存
+/**
+ * 处理内容保存
+ * @param element 编辑的DOM元素
+ */
 async function handleSave(element: HTMLElement) {
   const matches = (element as any).__matches as Match[]
   const searchHtml = (element as any).__searchHtml as boolean
@@ -793,7 +912,10 @@ async function handleSave(element: HTMLElement) {
   await saveContent(newContent, matchIndex, searchHtml)
 }
 
-// 取消编辑
+/**
+ * 取消编辑，恢复原始内容
+ * @param element 编辑的DOM元素
+ */
 function cancelEdit(element: HTMLElement) {
   const originalContent = (element as any).__originalContent as string
   const searchHtml = (element as any).__searchHtml as boolean
@@ -843,7 +965,12 @@ function cancelEdit(element: HTMLElement) {
   removeHighlight()
 }
 
-// 高亮显示搜索内容
+/**
+ * 高亮显示搜索内容
+ * @param text 原始文本
+ * @param searchText 要高亮的搜索文本
+ * @returns 带高亮标记的HTML字符串
+ */
 function highlightContent(text: string, searchText: string): string {
   if (!searchText || !text) return text || ''
   
@@ -867,12 +994,20 @@ function highlightContent(text: string, searchText: string): string {
   return escapedText.replace(regex, '<mark class="visual-editor-highlight-text">$1</mark>')
 }
 
-// 转义正则表达式特殊字符
+/**
+ * 转义正则表达式特殊字符
+ * @param str 要转义的字符串
+ * @returns 转义后的字符串
+ */
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// 显示匹配选择器（右侧抽屉式）
+/**
+ * 显示匹配选择器（右侧抽屉式）
+ * @param element 当前编辑的元素
+ * @param matches 匹配结果数组
+ */
 function showMatchSelector(element: HTMLElement, matches: Match[]) {
   // 创建遮罩层
   const overlay = document.createElement('div')
@@ -1026,7 +1161,11 @@ function showMatchSelector(element: HTMLElement, matches: Match[]) {
   document.body.appendChild(drawer)
 }
 
-// 显示通知
+/**
+ * 显示通知消息
+ * @param message 通知内容
+ * @param type 通知类型（success、error或warning，默认success）
+ */
 function showNotification(message: string, type: 'success' | 'error' | 'warning' = 'success') {
   const notification = document.createElement('div')
   notification.className = `visual-editor-notification visual-editor-notification--${type}`
@@ -1039,6 +1178,9 @@ function showNotification(message: string, type: 'success' | 'error' | 'warning'
   }, 3000)
 }
 
+/**
+ * 创建原生编辑器模态框
+ */
 function createNativeEditorModal() {
   // 移除已存在的模态框
   const existingModal = document.getElementById('visual-editor-modal')
@@ -1199,6 +1341,12 @@ function createNativeEditorModal() {
   setTimeout(() => textarea.focus(), 100)
 }
 
+/**
+ * 保存编辑后的内容到源文件
+ * @param newContent 新的内容
+ * @param matchIndex 匹配结果的索引
+ * @param searchHtml 是否在HTML中搜索（默认false）
+ */
 async function saveContent(newContent: string, matchIndex: number, searchHtml: boolean = false) {
   const match = editorState.matches[matchIndex]
   if (!match) return
@@ -1240,7 +1388,12 @@ async function saveContent(newContent: string, matchIndex: number, searchHtml: b
 
 // ========== CSS 编辑功能 ==========
 
-// 搜索 CSS 文件
+/**
+ * 搜索CSS文件中与指定元素相关的样式规则
+ * @param element 目标DOM元素
+ * @param cssFiles CSS文件路径数组
+ * @returns CSS匹配结果Promise数组
+ */
 async function searchCSS(element: HTMLElement, cssFiles: string[]): Promise<CssMatch[]> {
   try {
     // 获取元素的完整选择器信息（包含元素和父元素信息）
@@ -1267,7 +1420,11 @@ async function searchCSS(element: HTMLElement, cssFiles: string[]): Promise<CssM
   }
 }
 
-// 获取元素的完整选择器信息（用于 CSS 匹配）
+/**
+ * 获取元素的完整选择器信息
+ * @param element 目标DOM元素
+ * @returns 元素选择器信息对象
+ */
 function getElementSelector(element: HTMLElement): {
   elementInfo: {
     tag: string
@@ -1329,7 +1486,11 @@ function getElementSelector(element: HTMLElement): {
   }
 }
 
-// 获取元素的类名（过滤掉 scoped 相关的类）
+/**
+ * 获取元素的类名（过滤掉scoped相关的类）
+ * @param element 目标DOM元素
+ * @returns 类名数组
+ */
 function getElementClasses(element: HTMLElement): string[] {
   if (!element.className) return []
   
@@ -1351,7 +1512,10 @@ function getElementClasses(element: HTMLElement): string[] {
   return []
 }
 
-// 开始编辑 CSS
+/**
+ * 开始编辑CSS样式
+ * @param element 要编辑样式的DOM元素
+ */
 async function startEditCSS(element: HTMLElement) {
   hideEditButton()
   removeHighlight()
@@ -1410,7 +1574,11 @@ async function startEditCSS(element: HTMLElement) {
   showCSSDrawer(element, matches)
 }
 
-// 显示 CSS 编辑抽屉
+/**
+ * 显示CSS编辑抽屉
+ * @param element 要编辑样式的DOM元素
+ * @param matches CSS匹配结果数组
+ */
 function showCSSDrawer(element: HTMLElement, matches: CssMatch[]) {
   // 创建遮罩层
   const overlay = document.createElement('div')
@@ -1523,7 +1691,11 @@ function showCSSDrawer(element: HTMLElement, matches: CssMatch[]) {
   document.body.appendChild(drawer)
 }
 
-// 保存 CSS
+/**
+ * 保存CSS样式规则到源文件
+ * @param match CSS匹配结果
+ * @param newRules 新的CSS规则
+ */
 async function saveCSS(match: CssMatch, newRules: string) {
   try {
     const response = await fetch('/api/visual-editor/update-css', {
