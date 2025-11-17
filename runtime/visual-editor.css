@@ -7,7 +7,7 @@
 }
 
 .visual-editor-btn {
-  padding: 6px 12px;
+  padding: 4px 8px;
   background: #3b82f6;
   color: #fff;
   border: none;
@@ -16,7 +16,7 @@
   font-size: 12px;
   font-weight: 400;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s ease;
+  /* transition: all 0.2s ease; */
   white-space: nowrap;
 }
 
@@ -43,7 +43,7 @@
 .visual-editor-highlight {
   outline: 2px dashed rgba(255, 208, 0, 1) !important;
   outline-offset: -2px !important;
-  background: rgba(255, 208, 0, 0.6) !important;
+  background: rgba(255, 208, 0, 0.2) !important;
 }
 
 .visual-editor-inline-editing {

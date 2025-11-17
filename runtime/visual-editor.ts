@@ -109,6 +109,16 @@ function buildPathCandidates(pathname: string): string[] {
   if (segments.length > 0) {
     const withoutLocale = `/${segments.slice(1).join('/')}`
     candidates.add(withoutLocale === '//' ? '/' : withoutLocale || '/')
+    
+    // 添加路径前缀的通配符候选，用于更好地匹配配置中的通配符路径
+    // 例如对于/works/11，会生成/work/*这样的候选
+    if (segments.length > 1) {
+      for (let i = 1; i < segments.length; i++) {
+        // 生成前缀路径（不包括最后一个段）并添加通配符
+        const prefixPath = `/${segments.slice(0, i).join('/')}/*`
+        candidates.add(prefixPath)
+      }
+    }
   }
 
   candidates.add('/')
@@ -162,6 +172,8 @@ function patternToRegex(pattern: string): RegExp | null {
   })
 
   let escaped = escapeRegex(transformed)
+  // 修复通配符替换逻辑：将转义后的*（即\*）替换为.*
+  // 使用正确的正则表达式匹配转义后的星号
   escaped = escaped.replace(/\\\*/g, '.*')
 
   tokens.forEach(({ placeholder, regex }) => {
@@ -180,21 +192,40 @@ function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
 
   const candidates = buildPathCandidates(pathname)
 
+  console.log('【***】:', pathname, candidates)
+  // 1. 尝试直接匹配路径
   for (const candidate of candidates) {
     const directMatch = sourceMap[candidate]
     if (Array.isArray(directMatch) && directMatch.length > 0) {
+      // 打印查找到的本地文件列表
+      console.log('【尝试直接匹配路径】:', directMatch)
       return directMatch
     }
   }
 
+  // 2. 尝试模式匹配
   for (const key of Object.keys(sourceMap)) {
+    // 跳过default配置，留到最后处理
+    if (key === 'default') continue;
+    
     const pattern = patternToRegex(key)
+    
     if (pattern && candidates.some(candidate => pattern.test(candidate))) {
       const files = sourceMap[key]
       if (Array.isArray(files) && files.length > 0) {
+        // 打印查找到的本地文件列表
+        console.log('【尝试模式匹配2】:', files)        
         return files
       }
     }
+  }
+
+  // 3. 如果没有找到匹配项，检查是否有default配置
+  const defaultFiles = sourceMap['default']
+  if (Array.isArray(defaultFiles) && defaultFiles.length > 0) {
+    // 打印查找到的本地文件列表
+    console.log('【default配置】:', defaultFiles)
+    return defaultFiles
   }
 
   return []
@@ -202,6 +233,11 @@ function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
 
 // 检查元素是否可编辑（支持单个标识或数组）
 function isEditableElement(element: HTMLElement, tagKey: string | string[]): boolean {
+  // 排除位于抽屉弹窗内的元素
+  if (element.closest('.visual-editor-drawer')) {
+    return false
+  }
+  
   const tagKeys = Array.isArray(tagKey) ? tagKey : [tagKey]
   
   for (const key of tagKeys) {
@@ -305,6 +341,19 @@ function showEditButton(element: HTMLElement) {
 
   // 添加高亮效果
   highlightElement(element)
+  
+  // 添加双击编辑事件
+  const handleDoubleClick = (e: MouseEvent) => {
+    e.stopPropagation()
+    if (!editorState.isEditing) {
+      clearHideButtonTimeout()
+      startEdit(element)
+    }
+  }
+  element.addEventListener('dblclick', handleDoubleClick)
+  
+  // 保存事件处理器引用，以便后续移除
+  ;(element as any).__doubleClickHandler = handleDoubleClick
 
   const config = window.__VISUAL_EDITOR_CONFIG__
   const editCSS = config?.editCSS || false
@@ -399,7 +448,7 @@ function scheduleHideButton() {
   clearHideButtonTimeout()
   hideButtonTimeout = window.setTimeout(() => {
     hideEditButton()
-  }, 200) // 200ms 延迟，给用户时间移到按钮上
+  }, 20) // 200ms 延迟，给用户时间移到按钮上
 }
 
 // 添加高亮效果
@@ -412,6 +461,13 @@ function highlightElement(element: HTMLElement) {
 // 移除高亮效果
 function removeHighlight() {
   if (highlightedElement) {
+    // 移除双击事件监听器
+    const doubleClickHandler = (highlightedElement as any).__doubleClickHandler
+    if (doubleClickHandler) {
+      highlightedElement.removeEventListener('dblclick', doubleClickHandler)
+      delete (highlightedElement as any).__doubleClickHandler
+    }
+    
     highlightedElement.classList.remove('visual-editor-highlight')
     highlightedElement = null
   }
@@ -481,7 +537,11 @@ async function startEdit(element: HTMLElement) {
   // 获取当前页面路径
   const currentPath = window.location.pathname
   const sourceFiles = resolveSourceFiles(currentPath, config.sourceMap)
+  
+  // 打印查找到的本地文件列表
+  console.log('【Easy Editor】查找到的本地文件列表:', sourceFiles)
 
+  // 只有在完全找不到任何文件（包括default路径）时才显示错误通知
   if (sourceFiles.length === 0) {
     showNotification('未找到该页面对应的源文件配置，请在 nuxt.config.ts 中配置 sourceMap', 'warning')
     return
@@ -503,10 +563,35 @@ async function startEdit(element: HTMLElement) {
   const matches = await searchContent(processedContent, sourceFiles, searchHtml)
 
   if (matches.length === 0) {
-    showNotification('未在源文件中找到该内容，无法保存到本地文件', 'warning')
+    // 尝试使用default路径进行查找
+    console.log('尝试使用default路径进行查找');
+    const defaultFiles = config.sourceMap?.default;
+    
+    if (Array.isArray(defaultFiles) && defaultFiles.length > 0) {
+      console.log('使用default路径:', defaultFiles);
+      const defaultMatches = await searchContent(processedContent, defaultFiles, searchHtml);
+      
+      if (defaultMatches.length > 0) {
+        // 在default路径中找到匹配
+        console.log('在default路径中找到匹配:', defaultMatches);
+        editorState.originalContent = originalContent;
+        editorState.matches = defaultMatches;
+        editorState.isEditing = true;
+        
+        if (defaultMatches.length > 1) {
+          showMatchSelector(element, defaultMatches);
+        } else {
+          enableInlineEdit(element, originalContent, defaultMatches);
+        }
+        return;
+      }
+    }
+    
+    // 仍然找不到匹配，显示警告
+    showNotification('未在源文件和default路径中找到该内容，无法保存到本地文件', 'warning');
     // 即使找不到文件，也允许编辑（只是不能保存）
-    enableInlineEdit(element, originalContent, [])
-    return
+    enableInlineEdit(element, originalContent, []);
+    return;
   }
 
   editorState.originalContent = originalContent
@@ -1280,6 +1365,9 @@ async function startEditCSS(element: HTMLElement) {
   // 获取当前页面路径
   const currentPath = window.location.pathname
   const sourceFiles = resolveSourceFiles(currentPath, config.sourceMap)
+  
+  // 打印查找到的本地文件列表
+  console.log('【Easy Editor】查找到的本地文件列表:', sourceFiles)
 
   if (sourceFiles.length === 0) {
     showNotification('未找到该页面对应的源文件配置，请在 nuxt.config.ts 中配置 sourceMap', 'warning')
@@ -1290,17 +1378,32 @@ async function startEditCSS(element: HTMLElement) {
   // 不再过滤，让后端处理所有文件类型
   const allFiles = sourceFiles
 
-  if (allFiles.length === 0) {
-    showNotification('未找到该页面对应的源文件配置，请在 nuxt.config.ts 中配置 sourceMap', 'warning')
-    return
-  }
+  // 不再需要重复检查，因为sourceFiles已经包含了default路径的处理
+  // allFiles直接使用sourceFiles的结果
 
   // 搜索 CSS（包括 Vue 文件中的 <style> 标签）
   const matches = await searchCSS(element, allFiles)
 
   if (matches.length === 0) {
-    showNotification('未在 CSS 文件中找到该元素的样式规则', 'warning')
-    return
+    // 尝试使用default路径进行查找
+    console.log('尝试使用default路径进行CSS查找');
+    const defaultFiles = config.sourceMap?.default;
+    
+    if (Array.isArray(defaultFiles) && defaultFiles.length > 0) {
+      console.log('使用default路径进行CSS查找:', defaultFiles);
+      const defaultMatches = await searchCSS(element, defaultFiles);
+      
+      if (defaultMatches.length > 0) {
+        // 在default路径中找到CSS匹配
+        console.log('在default路径中找到CSS匹配:', defaultMatches);
+        showCSSDrawer(element, defaultMatches);
+        return;
+      }
+    }
+    
+    // 仍然找不到匹配，显示警告
+    showNotification('未在CSS文件和default路径中找到该元素的样式规则', 'warning');
+    return;
   }
 
   // 显示 CSS 编辑抽屉
