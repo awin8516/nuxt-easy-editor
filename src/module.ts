@@ -30,7 +30,7 @@ function resolveRuntimeFile(relativePath: string) {
 export interface VisualEditorConfig {
   tagKey?: string | string[]
   sourceMap?: Record<string, string[]>
-  searchHtml?: boolean
+  // 不再需要searchHtml配置
   editCSS?: boolean
 }
 
@@ -42,7 +42,7 @@ export default defineNuxtModule<VisualEditorConfig>({
   defaults: {
     tagKey: 'easy-editor',
     sourceMap: {},
-    searchHtml: false,
+    // 默认支持HTML搜索，不再需要searchHtml配置
     editCSS: false
   },
   setup(options, nuxt) {
@@ -53,7 +53,7 @@ export default defineNuxtModule<VisualEditorConfig>({
       nuxt.options.runtimeConfig.public.visualEditor = {
         tagKey: options.tagKey || 'easy-editor',
         sourceMap: options.sourceMap || {},
-        searchHtml: options.searchHtml ?? false,
+        // 默认支持HTML搜索，不再需要searchHtml配置
         editCSS: options.editCSS ?? false
       }
 

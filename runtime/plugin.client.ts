@@ -11,7 +11,7 @@ export default defineNuxtPlugin(() => {
   window.__VISUAL_EDITOR_CONFIG__ = {
     tagKey: visualEditorConfig.tagKey || 'easy-editor',
     sourceMap: visualEditorConfig.sourceMap || {},
-    searchHtml: visualEditorConfig.searchHtml ?? false,
+    // 默认支持HTML搜索，不再需要searchHtml配置
     editCSS: visualEditorConfig.editCSS ?? false
   }
 
@@ -28,7 +28,7 @@ declare global {
     __VISUAL_EDITOR_CONFIG__?: {
       tagKey: string | string[]
       sourceMap: Record<string, string[]>
-      searchHtml?: boolean
+      // 不再需要searchHtml配置
       editCSS?: boolean
     }
   }

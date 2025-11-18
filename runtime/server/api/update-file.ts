@@ -4,7 +4,7 @@ import { defineEventHandler, readBody, createError } from 'h3'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { file, line, originalContent, newContent, searchHtml } = body
+  const { file, line, originalContent, newContent } = body
 
   if (!file || !line || originalContent === undefined || newContent === undefined) {
     throw createError({
@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const searchHtmlMode = searchHtml === true
+  // 默认使用HTML处理模式
 
   try {
     // 解析文件路径
@@ -42,17 +42,15 @@ export default defineEventHandler(async (event) => {
     const normalizedOriginal = originalContent.trim()
     const normalizedTarget = targetLine.trim()
     
-    // 如果 searchHtml 为 true，需要处理 HTML 实体匹配
+    // 默认处理 HTML 实体匹配
     // 创建匹配变体：原始内容、& 转为 &amp;、&amp; 转为 &
     const matchVariants: string[] = [normalizedOriginal]
-    if (searchHtmlMode) {
-      if (normalizedOriginal.includes('&amp;')) {
-        matchVariants.push(normalizedOriginal.replace(/&amp;/g, '&'))
-      }
-      if (normalizedOriginal.includes('&') && !normalizedOriginal.includes('&amp;')) {
-        // 只转义独立的 &，不转义已经是实体的部分
-        matchVariants.push(normalizedOriginal.replace(/(?<!&)(&)(?![a-zA-Z#0-9])/g, '&amp;'))
-      }
+    if (normalizedOriginal.includes('&amp;')) {
+      matchVariants.push(normalizedOriginal.replace(/&amp;/g, '&'))
+    }
+    if (normalizedOriginal.includes('&') && !normalizedOriginal.includes('&amp;')) {
+      // 只转义独立的 &，不转义已经是实体的部分
+      matchVariants.push(normalizedOriginal.replace(/(?<!&)(&)(?![a-zA-Z#0-9])/g, '&amp;'))
     }
     
     // 方法1：直接匹配

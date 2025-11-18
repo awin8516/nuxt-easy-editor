@@ -40,7 +40,6 @@ const wildcardRegexCache = new Map<string, RegExp>()
 interface VisualEditorRuntimeConfig {
   tagKey: string | string[]
   sourceMap: SourceMap
-  searchHtml?: boolean
   editCSS?: boolean
 }
 
@@ -212,9 +211,10 @@ function patternToRegex(pattern: string): RegExp | null {
  * @returns 匹配的源文件路径数组
  */
 function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
+  let res: any[] = []
   if (!sourceMap || typeof sourceMap !== 'object') {
     console.log('【未在nuxt.config.ts中查询到有效源文件映射配置】:', sourceMap)
-    return []
+    return res
   }
 
   const candidates = buildPathCandidates(pathname)
@@ -226,7 +226,7 @@ function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
     if (Array.isArray(directMatch) && directMatch.length > 0) {
       // 打印查找到的本地文件列表
       console.log('【尝试直接匹配路径】:', '"'+candidate+'" : ', "["+directMatch.join(", ")+"]")
-      return directMatch
+      res = res.concat(directMatch)
     }
   }
 
@@ -242,7 +242,7 @@ function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
       if (Array.isArray(files) && files.length > 0) {
         // 打印查找到的本地文件列表
         console.log('【尝试通配模式匹配】:', '"'+key+'" : ', "["+files.join(", ")+"]")
-        return files
+        res = res.concat(files)
       }
     }
   }
@@ -252,10 +252,10 @@ function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
   if (Array.isArray(defaultFiles) && defaultFiles.length > 0) {
     // 打印查找到的本地文件列表
     console.log('【default配置】:', '"default" : ', "["+defaultFiles.join(", ")+"]")
-    return defaultFiles
+    res = res.concat(defaultFiles)
   }
 
-  return []
+  return res
 }
 
 /**
@@ -564,35 +564,38 @@ async function startEdit(element: HTMLElement) {
     return
   }
 
-  const searchHtml = config.searchHtml || false
-  
   // 获取原始内容
-  const textContent = element.textContent || element.innerText || ''
   const rawHtmlContent = element.innerHTML
   const sanitizedHtmlContent = removeScopedAttributes(rawHtmlContent)
 
-  // 如果 searchHtml 为 false，检查是否包含 HTML 标签
-  // 更准确的HTML标签检测：不仅比较字符串，还要检查是否真正包含HTML标签
-  if (!searchHtml) {
-    // 尝试更精确地检测HTML标签
-    const hasActualHtmlTags = /<[^>]+>/g.test(sanitizedHtmlContent)
+  // 生成rawHtmlContent的内容变体数组
+  function generateContentVariants(content: string): string[] {
+    const variants: string[] = []
     
-    // 只在确实包含HTML标签时才提示警告
-    // 避免因为特殊字符（如U+00a0非断行空格）导致的误判
-    if (hasActualHtmlTags) {
-      showNotification('内容包含 HTML 标签，请设置 searchHtml: true 来搜索', 'warning')
-      return
-    }
+    // 变体1: 默认原始不变
+    variants.push(content)
+    
+    // 变体2: 替换前后空格或特殊字符
+    variants.push(content.replace(/^[\s\u00a0]+|[\s\u00a0]+$/g, ''))
+    
+    // 变体3: 浏览器页面中换行，替换成<br>
+    variants.push(content.replace(/\n/g, '<br>'))
+    
+    // 变体4: 浏览器页面中换行，替换成<br />
+    variants.push(content.replace(/\n/g, '<br />'))
+    
+    // 变体5: 浏览器页面中换行，保持为\n（不做转换）
+    variants.push(content.replace(/\n/g, '\\n'))
+    
+    // 数组去重
+    return [...new Set(variants)]
   }
 
-  // 根据 searchHtml 配置获取内容
-  let originalContent: string
-  if (searchHtml) {
-    // 使用移除 scoped 属性后的 HTML，并将换行符转换为 <br> 标签
-    originalContent = sanitizedHtmlContent.replace(/\n/g, '<br>')
-  } else {
-    originalContent = textContent
-  }
+  // 生成内容变体
+  const contentVariants = generateContentVariants(sanitizedHtmlContent)
+  
+  // 默认使用第一个变体（原始内容）
+  let originalContent = contentVariants[0]
 
   ;(element as any).__domOriginalContent = rawHtmlContent
 
@@ -612,49 +615,28 @@ async function startEdit(element: HTMLElement) {
   // 搜索内容 - 使用更全面的空白字符处理，包括移除U+00a0非断空格字符
   // 打印originalContent到控制台便于调试
   console.log('Original Content:', "["+originalContent+"]");
-  
-  // 更全面的空白字符处理：
-  // 1. 首先移除HTML实体形式的非断空格
-  // 2. 然后移除各种空白字符（包括普通空格和U+00a0非断空格）
-  const processedContent = originalContent
-    .replace(/&nbsp;/g, '')  // 移除HTML实体形式的非断空格
-    .replace(/[\s\u00a0]+$/g, '')  // 移除结尾的所有空白字符
-    .replace(/^[\s\u00a0]+/g, '');  // 移除开头的所有空白字符
-  
-  console.log('Processed Content:', "["+processedContent+"]");
-  const matches = await searchContent(processedContent, sourceFiles, searchHtml)
-
-  if (matches.length === 0) {
-    // 尝试使用default路径进行查找
-    console.log('尝试使用default路径进行查找');
-    const defaultFiles = config.sourceMap?.default;
     
-    if (Array.isArray(defaultFiles) && defaultFiles.length > 0) {
-      console.log('使用default路径:', defaultFiles);
-      const defaultMatches = await searchContent(processedContent, defaultFiles, searchHtml);
-      
-      if (defaultMatches.length > 0) {
-        // 在default路径中找到匹配
-        console.log('在default路径中找到匹配:', defaultMatches);
-        editorState.originalContent = originalContent;
-        editorState.matches = defaultMatches;
-        editorState.isEditing = true;
-        
-        if (defaultMatches.length > 1) {
-          showMatchSelector(element, defaultMatches);
-        } else {
-          enableInlineEdit(element, originalContent, defaultMatches);
-        }
-        return;
-      }
+  // 遍历内容变体数组进行查找
+  let matches: Match[] = []
+  let aaa:string = ""
+  for (let i = 0; i < contentVariants.length; i++) {
+    const variant = contentVariants[i]
+    // console.log(`【查找中】原始内容变体 ${i+1}/${contentVariants.length}, ${variant}`);
+    const variantMatches = await searchContent(variant, sourceFiles)
+    
+    if (variantMatches.length > 0) {
+      console.log(`【查找成功】原始内容变体 ${i+1}/${contentVariants.length}, ${variant} 找到匹配`);
+      matches = variantMatches
+      aaa = variant
+      console.log('【matches】',matches);
+      break  // 找到匹配后停止遍历
+    } else {
+      console.log(`【查找中】原始内容变体 ${i+1}/${contentVariants.length}, ${variant} 未查询到`);
     }
-    
-    // 仍然找不到匹配，显示警告
-    showNotification('未在源文件和default路径中找到该内容，无法保存到本地文件', 'warning');
-    // 即使找不到文件，也允许编辑（只是不能保存）
-    enableInlineEdit(element, originalContent, []);
-    return;
   }
+
+  // 由于resolveSourceFiles函数已修改，default配置已自动包含在sourceFiles中，不再需要单独处理
+  // 原有的default路径查找逻辑已被删除，因为default配置已自动包含在sourceFiles中
 
   editorState.originalContent = originalContent
   editorState.matches = matches
@@ -677,13 +659,12 @@ interface ServerLog {
 }
 
 /**
- * 在源代码中搜索特定内容
+ * 在源代码中搜索特定内容（默认支持HTML搜索）
  * @param content 要搜索的内容
  * @param sourceFiles 源文件路径数组
- * @param searchHtml 是否在HTML中搜索（默认false）
  * @returns 匹配结果Promise数组
  */
-async function searchContent(content: string, sourceFiles: string[], searchHtml: boolean = false): Promise<Match[]> {
+async function searchContent(content: string, sourceFiles: string[]): Promise<Match[]> {
   try {
     const response = await fetch('/api/visual-editor/search-content', {
       method: 'POST',
@@ -692,13 +673,13 @@ async function searchContent(content: string, sourceFiles: string[], searchHtml:
       },
       body: JSON.stringify({
         content: content.trim(),
-        files: sourceFiles,
-        searchHtml: searchHtml
+        files: sourceFiles
       })
     })
 
     if (!response.ok) {
-      throw new Error('搜索失败')
+      // 使用中文错误消息
+      throw new Error('搜索内容失败，请检查源文件配置')
     }
 
     const data = await response.json()
@@ -718,6 +699,12 @@ async function searchContent(content: string, sourceFiles: string[], searchHtml:
         }
         console.groupEnd()
       })
+    }
+    
+    // 如果有错误消息，显示通知
+    if (data.errMsg) {
+      console.error('[Visual Editor] 搜索错误:', data.errMsg)
+      showNotification(data.errMsg, 'error')
     }
     
     return data.matches || []
@@ -770,21 +757,18 @@ function removeScopedAttributes(html: string): string {
  */
 function enableInlineEdit(element: HTMLElement, originalContent: string, matches: Match[]) {
   const config = window.__VISUAL_EDITOR_CONFIG__
-  const searchHtml = config?.searchHtml || false
+  // 默认支持HTML搜索，不再需要searchHtml配置
   
   // 保存原始内容
   const savedContent = originalContent
   
   // 如果 searchHtml 为 true，需要将 HTML 标签转义显示（但保留已转义的实体）
-  if (searchHtml) {
+  // 总是使用HTML模式
     // 只转义 HTML 标签（<tag>），不转义 HTML 实体（如 &amp;）
     // 使用正则匹配 HTML 标签并转义，保留实体不变
     const escapedContent = originalContent.replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)(\s[^>]*)?>/g, '&lt;$1$2$3&gt;')
     element.innerHTML = escapedContent
-  } else {
-    // searchHtml 为 false 时，直接使用文本内容
-    element.textContent = originalContent
-  }
+  // 不再需要else分支，默认使用HTML模式
   
   // 设置元素为可编辑
   element.setAttribute('contenteditable', 'plaintext-only')
@@ -801,7 +785,7 @@ function enableInlineEdit(element: HTMLElement, originalContent: string, matches
   ;(element as any).__saveButton = saveBtn
   ;(element as any).__originalContent = savedContent
   ;(element as any).__matches = matches
-  ;(element as any).__searchHtml = searchHtml
+  // 不再需要存储searchHtml标志
   
   // 聚焦到元素
   element.focus()
@@ -868,12 +852,11 @@ function createSaveButton(element: HTMLElement, matches: Match[]): HTMLElement {
  */
 async function handleSave(element: HTMLElement) {
   const matches = (element as any).__matches as Match[]
-  const searchHtml = (element as any).__searchHtml as boolean
+  // 不再需要searchHtml变量
   const originalContent = (element as any).__originalContent as string
   
   // 获取编辑后的内容
   let newContent: string
-  if (searchHtml) {
     // 如果 searchHtml 为 true，获取 innerHTML
     // 用户编辑的是转义后的文本（如 &lt;br&gt;），需要还原为 HTML（<br>）
     const escapedContent = element.innerHTML
@@ -893,9 +876,7 @@ async function handleSave(element: HTMLElement) {
     newContent = newContent.replace(/<div>/g, '<br>').replace(/<\/div>/g, '')
     // 处理多个连续的 <br>，合并为一个
     newContent = newContent.replace(/(<br\s*\/?>)+/gi, '<br>')
-  } else {
-    newContent = element.textContent || element.innerText || ''
-  }
+  // 总是使用HTML模式
   
   if (newContent.trim() === originalContent.trim()) {
     cancelEdit(element)
@@ -909,7 +890,7 @@ async function handleSave(element: HTMLElement) {
   
   // 如果有多处匹配，使用第一个（或之前选择的）
   const matchIndex = (element as any).__selectedMatchIndex || 0
-  await saveContent(newContent, matchIndex, searchHtml)
+  await saveContent(newContent, matchIndex)
 }
 
 /**
@@ -918,18 +899,14 @@ async function handleSave(element: HTMLElement) {
  */
 function cancelEdit(element: HTMLElement) {
   const originalContent = (element as any).__originalContent as string
-  const searchHtml = (element as any).__searchHtml as boolean
+  // 不再需要searchHtml变量
   const domOriginalContent = (element as any).__domOriginalContent as string | undefined
   
-  // 恢复原始内容
-  if (searchHtml) {
-    if (typeof domOriginalContent === 'string') {
-      element.innerHTML = domOriginalContent
-    } else {
-      element.innerHTML = originalContent
-    }
+  // 恢复原始内容，总是使用HTML模式
+  if (typeof domOriginalContent === 'string') {
+    element.innerHTML = domOriginalContent
   } else {
-    element.textContent = originalContent
+    element.innerHTML = originalContent
   }
   
   element.removeAttribute('contenteditable')
@@ -958,7 +935,7 @@ function cancelEdit(element: HTMLElement) {
   delete (element as any).__keydownHandler
   delete (element as any).__blurHandler
   delete (element as any).__selectedMatchIndex
-  delete (element as any).__searchHtml
+  // 不再需要删除__searchHtml属性
   delete (element as any).__domOriginalContent
   
   editorState.isEditing = false
@@ -1342,12 +1319,11 @@ function createNativeEditorModal() {
 }
 
 /**
- * 保存编辑后的内容到源文件
+ * 保存内容到文件
  * @param newContent 新的内容
- * @param matchIndex 匹配结果的索引
- * @param searchHtml 是否在HTML中搜索（默认false）
+ * @param matchIndex 匹配的索引
  */
-async function saveContent(newContent: string, matchIndex: number, searchHtml: boolean = false) {
+async function saveContent(newContent: string, matchIndex: number) {
   const match = editorState.matches[matchIndex]
   if (!match) return
 
@@ -1361,8 +1337,7 @@ async function saveContent(newContent: string, matchIndex: number, searchHtml: b
         file: match.file,
         line: match.line,
         originalContent: match.originalContent,
-        newContent: newContent,
-        searchHtml: searchHtml
+        newContent: newContent
       })
     })
 

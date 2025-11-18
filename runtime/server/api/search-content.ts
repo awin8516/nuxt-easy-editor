@@ -70,7 +70,7 @@ export default defineEventHandler(async (event) => {
   })
   
   const body = await readBody(event)
-  const { content, files, searchHtml } = body
+  const { content, files } = body
 
   if (!content || !files || !Array.isArray(files)) {
     throw createError({
@@ -79,7 +79,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const searchHtmlMode = searchHtml === true
+  // 默认使用HTML搜索模式
 
   const matches: Array<{
     file: string
@@ -120,15 +120,10 @@ export default defineEventHandler(async (event) => {
       })
       // 按行搜索
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i]
-        const lineNumber = i + 1
+          const line = lines[i]
+          const lineNumber = i + 1
 
-        // 如果 searchHtml 为 true，搜索包含 HTML 的内容
-        // 如果 searchHtml 为 false，只搜索纯文本（如果行中包含 HTML 标签则跳过）
-        let shouldMatch = false
-        
-        if (searchHtmlMode) {
-          // 搜索 HTML 内容，保留 HTML 标签
+          // 默认搜索HTML内容，保留HTML标签
           // 将换行符转换为 <br> 进行匹配
           const normalizedLine = line.replace(/\n/g, '<br>')
           
@@ -148,41 +143,10 @@ export default defineEventHandler(async (event) => {
             searchVariants.add(searchContent.replace(/(?<!&)(&)(?![a-zA-Z#0-9])/g, '&amp;'))
           }
           
-          shouldMatch = Array.from(searchVariants).some(variant => normalizedLine.includes(variant))
-        } else {
-          // 只搜索纯文本
-          // 更智能地检测真正的HTML标签，而不是简单跳过包含<>的行
-          // 提取行中的纯文本内容（去除可能的HTML标签）
-          let textOnly = line
+          // 检查是否匹配任何变体
+          const shouldMatch = Array.from(searchVariants).some(variant => normalizedLine.includes(variant))
           
-          // 如果行看起来包含HTML标签，尝试提取纯文本
-          if (line.includes('<') && line.includes('>')) {
-            // 尝试从引号中提取文本内容（可能是模板字符串中的文本）
-            const quoteMatch = line.match(/'([^']*?)'/g) || line.match(/"([^"]*?)"/g)
-            if (quoteMatch) {
-              for (const quoted of quoteMatch) {
-                const quotedContent = quoted.slice(1, -1) // 移除引号
-                const normalizedQuoted = quotedContent.replace(/[\s\u00a0]+/g, ' ').trim()
-                const normalizedSearch = searchContent.replace(/[\s\u00a0]+/g, ' ').trim()
-                if (normalizedQuoted.includes(normalizedSearch)) {
-                  shouldMatch = true
-                  // 尝试从引号中提取原始内容
-                  originalContent = quotedContent
-                  break
-                }
-              }
-            }
-          }
-          
-          // 如果没有在引号中找到，执行普通的文本搜索
-          if (!shouldMatch) {
-            const normalizedLine = line.replace(/[\s\u00a0]+/g, ' ').trim()
-            const normalizedContent = searchContent.replace(/[\s\u00a0]+/g, ' ').trim()
-            shouldMatch = normalizedLine.includes(normalizedContent)
-          }
-        }
-        
-        if (shouldMatch) {
+          if (shouldMatch) {
           // 提取上下文（前后各5行，便于用户识别）
           const start = Math.max(0, i - 5)
           const end = Math.min(lines.length, i + 6)
@@ -225,9 +189,9 @@ export default defineEventHandler(async (event) => {
             }
           }
           
-          // 如果 searchHtml 为 true，确保 originalContent 使用文件中实际的格式
+          // 确保 originalContent 使用文件中实际的格式
           // 文件中的 & 应该保持为 &，而不是 &amp;
-          if (searchHtmlMode && originalContent.includes('&amp;')) {
+          if (originalContent.includes('&amp;')) {
             // 检查文件中是否实际使用的是 &（未转义）
             // 如果行中包含 & 而不是 &amp;，使用 & 版本
             if (line.includes('&') && !line.includes('&amp;')) {
@@ -256,9 +220,14 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // 检查是否有错误日志
+  const errorLogs = logs.filter(log => log.type === 'error')
+  const errMsg = errorLogs.length > 0 ? errorLogs[0].message : ''
+  
   return {
     matches,
-    serverLogs: logs
+    serverLogs: logs,
+    errMsg: errMsg // 增加errMsg字段，包含中文错误消息
   }
 })
 
