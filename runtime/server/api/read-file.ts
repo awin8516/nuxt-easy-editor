@@ -1,34 +1,22 @@
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
-import { defineEventHandler, getQuery, createError } from 'h3'
+import { readFile } from 'fs/promises'
+import { join } from 'path'
 
 export default defineEventHandler(async (event) => {
-  const query = getQuery(event)
-  const filePath = query.file as string
-
-  if (!filePath) {
-    throw createError({
-      statusCode: 400,
-      message: 'File path is required'
-    })
-  }
-
   try {
-    // 解析文件路径
-    const resolvedPath = filePath.startsWith('/') || filePath.match(/^[A-Z]:/)
-      ? filePath
-      : resolve(process.cwd(), filePath)
-
-    const content = readFileSync(resolvedPath, 'utf-8')
-    return {
-      content,
-      path: resolvedPath
+    const query = getQuery(event)
+    const filePath = query.file as string
+    
+    if (!filePath) {
+      return { error: '文件路径不能为空' }
     }
-  } catch (error: any) {
-    throw createError({
-      statusCode: 500,
-      message: `Failed to read file: ${error.message}`
-    })
+    
+    // 确保文件路径在项目根目录内
+    const fullPath = join(process.cwd(), filePath)
+    const content = await readFile(fullPath, 'utf8')
+    
+    return { content }
+  } catch (error) {
+    console.error('读取文件失败:', error)
+    return { error: '读取文件失败' }
   }
 })
-

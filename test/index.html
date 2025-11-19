@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nuxt Easy Editor 测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+        }
+        .content {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+    <!-- 加载编辑器样式 -->
+    <link rel="stylesheet" href="../runtime/css/visual-editor.css">
+</head>
+<body>
+    <h1>Nuxt Easy Editor 测试页面</h1>
+    
+    <!-- 使用类名匹配 -->
+    <div class="easy-editor content">
+        <h2>这是一个可编辑的内容区块</h2>
+        <p>鼠标滑入这个区块，应该会看到高亮边框出现。</p>
+        <p>点击页面右下角的"编辑内容"按钮，可以修改这个区块的内容。</p>
+    </div>
+    
+    <!-- 使用自定义属性匹配 -->
+    <div easy-editor class="content">
+        <h2>这是另一个可编辑的内容区块</h2>
+        <p>这个区块使用了自定义属性 easy-editor 来标识可编辑元素。</p>
+        <p>同样，鼠标滑入时会看到高亮边框。</p>
+    </div>
+    
+    <!-- 使用 data-* 属性匹配 -->
+    <div data-easy-editor class="content">
+        <h2>这是第三个可编辑的内容区块</h2>
+        <p>这个区块使用了 data-easy-editor 属性来标识可编辑元素。</p>
+        <p>鼠标滑入时会看到高亮边框。</p>
+    </div>
+
+    <!-- 加载编译后的脚本 -->
+    <script type="module">
+        // 配置编辑器
+        const config = {
+            tagKey: 'easy-editor',
+            sourceMap: {},
+            editCSS: true
+        };
+
+        // 导入并初始化编辑器
+        import { initVisualEditor } from '../dist/runtime/visual-editor.js';
+        initVisualEditor(config);
+    </script>
+</body>
+</html>

@@ -30,19 +30,17 @@ function resolveRuntimeFile(relativePath: string) {
 export interface VisualEditorConfig {
   tagKey?: string | string[]
   sourceMap?: Record<string, string[]>
-  // 不再需要searchHtml配置
   editCSS?: boolean
 }
 
 export default defineNuxtModule<VisualEditorConfig>({
   meta: {
     name: 'nuxt-easy-editor',
-    configKey: 'visualEditor'
+    configKey: 'easyEditor'
   },
   defaults: {
     tagKey: 'easy-editor',
     sourceMap: {},
-    // 默认支持HTML搜索，不再需要searchHtml配置
     editCSS: false
   },
   setup(options, nuxt) {
@@ -70,13 +68,13 @@ export default defineNuxtModule<VisualEditorConfig>({
       })
 
       addServerHandler({
-        route: '/api/visual-editor/update-file',
-        handler: resolveRuntimeFile('server/api/update-file')
+        route: '/api/visual-editor/search-content',
+        handler: resolveRuntimeFile('server/api/search-content')
       })
 
       addServerHandler({
-        route: '/api/visual-editor/search-content',
-        handler: resolveRuntimeFile('server/api/search-content')
+        route: '/api/visual-editor/update-content',
+        handler: resolveRuntimeFile('server/api/update-content')
       })
 
       // 添加 CSS 编辑相关的 API 路由（仅在 editCSS 为 true 时）

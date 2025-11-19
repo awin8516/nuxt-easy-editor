@@ -1,4 +1,59 @@
-1�������ļ������У������ַ� U+00a0 ���ɼ����Ҳ���ͷβʱ�������ļ�ʧ�ܣ�
-2��
-3�������ļ�ʧ��ʱ�������л��ɱ༭��״̬��
-4��
+之前修改把项目弄乱了，现在准备重新梳理架构及逻辑。
+请先阅读README.md关于项目的功能介绍，再对代码进行重构：
+==================================================================================================
+
+项目架构与逻辑重构任务说明：
+
+1. 项目准备阶段：
+   - 首先详细阅读README.md文件，全面理解项目功能、设计理念及使用场景
+   - 梳理当前项目结构混乱点，明确重构目标与预期成果
+
+2. 文件重构要求：
+
+   2.1 /runtime/visual-editor.ts重构：
+      - 负责编辑器核心初始化流程，确保启动过程稳定可靠
+      - 实现当前页面路由解析与本地文件路径列表获取功能
+      - 开发鼠标滑入滑出交互功能的完整逻辑
+      - 处理全局共享逻辑及提供公用方法导出接口
+      - 实现多匹配结果时的抽屉弹窗主框架初始化及关闭等公共逻辑(抽屉页面文件：/runtime/components/VisualEditor.vue)
+      - 通过调用startEditContent函数处理内容编辑入口，不包含具体编辑和保存逻辑
+      - 通过调用startEditCSS函数处理CSS编辑入口，不包含具体编辑和保存逻辑
+      - 检查并修复现有提纲中的编写错误，确保代码结构合理
+
+   2.2 /runtime/visual-editor-content.ts重构：
+      - 实现startEditContent入口函数，接收editorState.element和sourceFiles参数
+      - 基于传入参数，开发完整的内容编辑功能逻辑
+      - 实现内容保存机制，确保编辑内容能正确持久化
+      - 代码需专注于内容编辑领域，不包含与CSS编辑相关的逻辑
+      - 后端接口：/runtime/server/api/read-file.ts、/runtime/server/api/search-content.ts、/runtime/server/api/update-content.ts
+
+   2.3 /runtime/visual-editor-css.ts重构：
+      - 实现startEditCSS入口函数，接收editorState.element和sourceFiles参数
+      - 基于传入参数，开发完整的CSS编辑功能逻辑
+      - 实现CSS保存机制，确保样式修改能正确应用和保存
+      - 代码需专注于CSS编辑领域，不包含与内容编辑相关的逻辑
+      - 后端接口：/runtime/server/api/read-file.ts、/runtime/server/api/search-css.ts、/runtime/server/api/update-css.ts
+
+   2.4 样式处理规范：
+      - 所有样式必须使用className控制，禁止使用JS内联样式
+      - 样式代码统一编写在/runtime/css/visual-editor.css文件中
+      - 确保样式命名规范一致，遵循CSS模块化最佳实践
+
+3. 开发标准与质量要求：
+   - 遵循NPMJS插件开发的专业标准和最佳实践
+   - 代码必须简洁、高效、优雅，符合现代JavaScript/TypeScript编码规范
+   - 实现适当的错误处理和边界条件检查
+   - 确保代码可维护性和可扩展性
+   - 考虑不同使用场景下的兼容性问题
+
+4. 功能验证要求：
+   - 确保重构后的代码能够成功打包并发布到npmjs.com
+   - 验证发布的包在目标项目中能够正常安装和使用
+   - 确保所有功能模块之间的接口调用正确无误
+
+5. 架构原则：
+   - 严格遵循职责分离原则：/runtime/visual-editor.ts处理公共逻辑，visual-editor-content.ts和visual-editor-css.ts分别处理各自领域的私有逻辑
+   - 确保模块间低耦合高内聚，通过明确定义的接口进行通信
+   - 避免代码重复，提取可复用逻辑至适当的公共方法
+
+请按照以上要求进行项目重构，确保最终产品满足NPMJS插件的质量标准和使用要求。

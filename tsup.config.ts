@@ -10,10 +10,11 @@ export default defineConfig({
     'runtime/visual-editor-content': 'runtime/visual-editor-content.ts',
     'runtime/visual-editor-css': 'runtime/visual-editor-css.ts',
     'runtime/server/api/read-file': 'runtime/server/api/read-file.ts',
-    'runtime/server/api/update-file': 'runtime/server/api/update-file.ts',
     'runtime/server/api/search-content': 'runtime/server/api/search-content.ts',
     'runtime/server/api/search-css': 'runtime/server/api/search-css.ts',
-    'runtime/server/api/update-css': 'runtime/server/api/update-css.ts'
+    'runtime/server/api/update-content': 'runtime/server/api/update-content.ts',
+    'runtime/server/api/update-css': 'runtime/server/api/update-css.ts',
+    'runtime/server/api/utils': 'runtime/server/api/utils.ts'
   },
   // 只输出ESM格式，现代标准
   format: ['esm'],

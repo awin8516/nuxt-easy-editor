@@ -1,192 +1,50 @@
-import { readFileSync, writeFileSync } from 'fs'
-import { resolve } from 'path'
-import { defineEventHandler, readBody, createError } from 'h3'
+import { readFile, writeFile } from 'fs/promises'
+import { join } from 'path'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-  const { file, selector, originalRules, newRules, line, isScoped } = body
-
-  if (!file || !selector || originalRules === undefined || newRules === undefined) {
-    throw createError({
-      statusCode: 400,
-      message: 'Invalid request parameters'
-    })
-  }
-
   try {
-    // 解析文件路径
-    const resolvedPath = file.startsWith('/') || file.match(/^[A-Z]:/)
-      ? file
-      : resolve(process.cwd(), file)
-
-    // 读取文件
-    let fileContent = readFileSync(resolvedPath, 'utf-8')
+    const body = await readBody(event)
+    const { file, originalContent, newContent } = body
     
-    // 检查是否是 Vue 文件
-    const isVueFile = /\.(vue|jsx|tsx)$/i.test(resolvedPath) || fileContent.includes('<style')
+    if (!file || !originalContent || !newContent) {
+      return { success: false, error: '参数不完整' }
+    }
     
-    if (isVueFile) {
-      // 更新 Vue 文件中的 <style> 标签
-      fileContent = updateVueStyle(fileContent, selector, originalRules, newRules, isScoped)
-    } else {
-      // 更新纯 CSS 文件
-      fileContent = updateCSSFile(fileContent, selector, originalRules, newRules, line)
+    // 确保文件路径在项目根目录内
+    const fullPath = join(process.cwd(), file)
+    
+    // 读取文件内容
+    const fileContent = await readFile(fullPath, 'utf8')
+    
+    // 查找并替换CSS规则
+    // 先尝试使用精确匹配
+    let updatedContent = fileContent.replace(originalContent, newContent)
+    
+    // 如果没有找到匹配项，尝试使用正则表达式匹配不同的空格组合
+    if (updatedContent === fileContent) {
+      const regex = new RegExp(escapeRegExp(originalContent).replace(/\s+/g, '\\s+'), 'gms')
+      updatedContent = fileContent.replace(regex, newContent)
     }
-
-    // 写回文件
-    writeFileSync(resolvedPath, fileContent, 'utf-8')
-
-    return {
-      success: true,
-      message: 'CSS file updated successfully',
-      path: resolvedPath
+    
+    if (updatedContent === fileContent) {
+      return { success: false, error: '未找到要更新的CSS规则' }
     }
-  } catch (error: any) {
-    if (error.statusCode) {
-      throw error
-    }
-    throw createError({
-      statusCode: 500,
-      message: `Failed to update CSS file: ${error.message}`
-    })
+    
+    // 写入更新后的内容
+    await writeFile(fullPath, updatedContent, 'utf8')
+    
+    return { success: true }
+  } catch (error) {
+    console.error('更新CSS失败:', error)
+    return { success: false, error: '更新CSS失败' }
   }
 })
 
-// 更新 Vue 文件中的 <style> 标签
-function updateVueStyle(
-  content: string, 
-  selector: string, 
-  originalRules: string, 
-  newRules: string,
-  isScoped?: boolean
-): string {
-  const styleRegex = /<style(?:\s+scoped)?(?:\s+lang=["']([^"']+)["'])?[^>]*>([\s\S]*?)<\/style>/gi
-  let styleMatch
-  let lastIndex = 0
-  let result = ''
-
-  while ((styleMatch = styleRegex.exec(content)) !== null) {
-    const styleIsScoped = styleMatch[0].includes('scoped')
-    
-    // 只更新匹配的 scoped 样式
-    if (isScoped && !styleIsScoped) {
-      result += content.substring(lastIndex, styleMatch.index + styleMatch[0].length)
-      lastIndex = styleRegex.lastIndex
-      continue
-    }
-    if (!isScoped && styleIsScoped) {
-      result += content.substring(lastIndex, styleMatch.index + styleMatch[0].length)
-      lastIndex = styleRegex.lastIndex
-      continue
-    }
-
-    // 计算 style 标签在文件中的起始行号
-    const beforeStyle = content.substring(0, styleMatch.index)
-    const styleStartLine = beforeStyle.split('\n').length
-    
-    const styleContent = styleMatch[2]
-    const updatedStyle = updateCSSContent(styleContent, selector, originalRules, newRules, styleStartLine)
-    
-    result += content.substring(lastIndex, styleMatch.index)
-    result += styleMatch[0].replace(styleContent, updatedStyle)
-    lastIndex = styleRegex.lastIndex
-  }
-
-  result += content.substring(lastIndex)
-  return result
-}
-
-// 更新纯 CSS 文件
-function updateCSSFile(
-  content: string, 
-  selector: string, 
-  originalRules: string, 
-  newRules: string,
-  line?: number
-): string {
-  return updateCSSContent(content, selector, originalRules, newRules, line)
-}
-
-// 更新 CSS 内容
-function updateCSSContent(
-  content: string, 
-  selector: string, 
-  originalRules: string, 
-  newRules: string,
-  line?: number
-): string {
-  const normalizedOriginal = originalRules.trim()
-  const normalizedNew = newRules.trim()
-
-  // 方法1：直接匹配原始规则
-  if (content.includes(normalizedOriginal)) {
-    return content.replace(normalizedOriginal, normalizedNew)
-  }
-
-  // 方法2：通过选择器和行号定位
-  if (line) {
-    const lines = content.split('\n')
-    const targetLineIndex = line - 1
-    
-    if (targetLineIndex >= 0 && targetLineIndex < lines.length) {
-      const targetLine = lines[targetLineIndex]
-      
-      if (targetLine.includes(selector)) {
-        // 查找规则块的开始和结束
-        let ruleStart = targetLineIndex
-        let ruleEnd = targetLineIndex
-        let braceCount = 0
-        let foundStart = false
-
-        // 向前查找选择器行
-        for (let i = targetLineIndex; i >= 0; i--) {
-          if (lines[i].includes(selector) && lines[i].includes('{')) {
-            ruleStart = i
-            foundStart = true
-            break
-          }
-        }
-
-        if (foundStart) {
-          // 向后查找规则块结束
-          for (let i = ruleStart; i < lines.length; i++) {
-            for (const char of lines[i]) {
-              if (char === '{') braceCount++
-              if (char === '}') braceCount--
-            }
-            if (braceCount === 0 && i > ruleStart) {
-              ruleEnd = i
-              break
-            }
-          }
-
-          // 提取原始规则块
-          const originalBlock = lines.slice(ruleStart, ruleEnd + 1).join('\n')
-          
-          // 替换
-          if (originalBlock.includes(normalizedOriginal) || originalBlock.trim() === normalizedOriginal.trim()) {
-            const beforeBlock = lines.slice(0, ruleStart).join('\n')
-            const afterBlock = lines.slice(ruleEnd + 1).join('\n')
-            return beforeBlock + (beforeBlock ? '\n' : '') + normalizedNew + (afterBlock ? '\n' : '') + afterBlock
-          }
-        }
-      }
-    }
-  }
-
-  // 方法3：模糊匹配
-  const regex = new RegExp(escapeRegex(normalizedOriginal), 'g')
-  if (regex.test(content)) {
-    return content.replace(regex, normalizedNew)
-  }
-
-  throw createError({
-    statusCode: 400,
-    message: `CSS rules not found in file. Selector: "${selector}", Line: ${line || 'N/A'}`
-  })
-}
-
-// 转义正则表达式特殊字符
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/**
+ * 转义正则表达式中的特殊字符
+ * @param string 输入字符串
+ * @returns 转义后的字符串
+ */
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

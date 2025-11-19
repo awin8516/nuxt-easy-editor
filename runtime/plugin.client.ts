@@ -1,5 +1,5 @@
 import { defineNuxtPlugin, useRuntimeConfig } from '#imports'
-import './visual-editor.css'
+import './css/visual-editor.css'
 
 export default defineNuxtPlugin(() => {
   if (typeof window === 'undefined') return
@@ -17,7 +17,7 @@ export default defineNuxtPlugin(() => {
 
   // 初始化编辑器
   import('./visual-editor').then((module) => {
-    module.initVisualEditor()
+    module.initVisualEditor(window.__VISUAL_EDITOR_CONFIG__)
   }).catch((error) => {
     console.error('[Visual Editor] Failed to initialize:', error)
   })
