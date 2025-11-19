@@ -35,22 +35,27 @@ export default defineNuxtConfig({
     // 可以是属性名（如 'easy-editor'）或 HTML 标签名（如 'h1', 'p'）
     tagKey: ['easy-editor', 'h1', 'h2', 'h3', 'p'],
     editCSS: true,
-    // 是否搜索 HTML 标签（默认 false，只搜索纯文本）
-    // 当为 true 时，可以搜索包含 HTML 标签的内容，如 <p>Strategy<br>Platinum</p>
-    searchHtml: false,
-    
+
     // 配置页面路径到源文件的映射
     sourceMap: {
+      '/': [
+        'src/pages/index.vue'
+      ],
       '/about': [
         'src/pages/about.vue',
         'src/components/AboutSection.vue'
       ],
-      '/': [
-        'src/pages/index.vue'
+      // 支持通配符*页面路径,如'/works/123'
+      '/works/*': [
+        'src/pages/works/[id].vue'
       ],
-      // 支持通配符路径
+      // 支持通配符文件路径
       '/i18n': [
         'src/i18n/**/*.json'
+      ],
+      // 默认映射,当页面路径未配置时,默认映射到该路径
+      'default': [
+          'src/pages/index.vue'
       ]
     }
   }
@@ -107,23 +112,11 @@ tagKey: ['easy-editor', 'h1', 'h2', 'h3', 'p']
 // - 所有 <h3> 标签
 // - 所有 <p> 标签
 ```
-
-### `searchHtml`
-
-是否搜索 HTML 标签内容。默认为 `false`。
-
-- **`false`**（默认）：只搜索纯文本内容
-  - 如果内容包含 HTML 标签，会提示用户设置 `searchHtml: true`
-  - 只匹配不包含 HTML 标签的纯文本行
-- **`true`**：搜索包含 HTML 标签的内容
-  - 可以搜索如 `<p>Strategy<br>Platinum</p>` 这样的内容
-  - 保存时会自动还原转义的 HTML 标签
-
 ### `sourceMap`
 
 页面路径到源文件路径的映射对象。
 
-- **键**：页面路径（如 `/about`、`/`）
+- **键**：页面路径，支持通配符（如 `/about`、`/works/*`、`/`）
 - **值**：源文件路径数组（支持绝对路径或相对于项目根目录的路径）
 - **通配符支持**：支持使用 `*` 和 `?` 通配符，如 `src/i18n/**/*.json` 会匹配所有子目录下的 JSON 文件
 
@@ -131,8 +124,20 @@ tagKey: ['easy-editor', 'h1', 'h2', 'h3', 'p']
 
 1. 插件在开发环境下注入客户端脚本
 2. 监听带有指定属性的 DOM 元素
-3. 鼠标悬停时显示编辑按钮
+3. 鼠标悬停时显示编辑内容、编辑CSS按钮
 4. 点击后搜索配置的源文件，查找匹配的内容
+   4.1 编辑内容：
+      - 以浏览器页面原始内容，按替换前后空格，换行符替换规则生成变体数组，分别与源文件内容进行匹配
+      - 匹配1处成功后，将源文件内容赋值给页面contenteditable编辑框
+      - 匹配多处成功后，以抽屉弹窗形式展示所有匹配内容列表，用户可选择更新哪一处
+      - 修改为新内容后，点击保存按钮会更新源文件
+      - 会保留原始内容的空格、换行符等格式
+      - 仅更新匹配到的内容，其他部分保持不变
+      - 源文件中 <br> \n  修改前，修改后，要保证格式一致性
+   4.2 编辑CSS：
+      - 以className,及ID，结合父元素className,及ID，生成selectors变体数组,分别与源文件内容进行匹配
+      - 以抽屉弹窗形式展示匹配内容
+      - 修改为新内容后，点击保存按钮会更新源文件
 5. 如果有多处匹配，提供选择界面
 6. 编辑后通过 API 更新源文件
 7. 自动刷新页面以显示更改

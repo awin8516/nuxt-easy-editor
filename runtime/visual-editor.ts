@@ -1,11 +1,12 @@
-interface Match {
+// 共享接口定义
+export interface Match {
   file: string
   line: number
   context: string
   originalContent: string
 }
 
-interface CssMatch {
+export interface CssMatch {
   file: string
   selector: string
   rules: string
@@ -14,13 +15,33 @@ interface CssMatch {
   isScoped?: boolean
 }
 
-interface EditorState {
+export interface ElementInfo {
+  tag: string
+  classes: string[]
+  id: string | null
+  parentInfo: Array<{ tag: string; classes: string[]; id: string | null }>
+  selectorPath: string
+}
+
+export interface EditorState {
   element: HTMLElement | null
   originalContent: string
   matches: Match[]
   isEditing: boolean
 }
 
+export interface VisualEditorRuntimeConfig {
+  sourceMap: SourceMap
+  tagKey?: string
+  searchHtml?: boolean
+  editCSS?: boolean
+}
+
+export interface SourceMap {
+  [key: string]: string[]
+}
+
+// 全局状态管理
 let editorState: EditorState = {
   element: null,
   originalContent: '',
@@ -28,16 +49,32 @@ let editorState: EditorState = {
   isEditing: false
 }
 
-let editorComponent: any = null
-let hideButtonTimeout: number | null = null
-let currentButton: HTMLElement | null = null
+// 全局变量
+export let editorComponent: any = null
+export let hideButtonTimeout: number | null = null
+export let currentButton: HTMLElement | null = null
 let highlightedElement: HTMLElement | null = null
 
-type SourceMap = Record<string, string[]>
+// Setter函数用于修改highlightedElement
+export function setHighlightedElement(element: HTMLElement | null) {
+  highlightedElement = element;
+}
+
+// Setter函数用于修改editorState
+export function setEditorState(state: Partial<EditorState>) {
+  editorState = { ...editorState, ...state };
+}
+
+// Getter函数用于获取editorState
+export function getEditorState(): EditorState {
+  return editorState;
+}
+
+export type SourceMap = Record<string, string[]>
 
 const wildcardRegexCache = new Map<string, RegExp>()
 
-interface VisualEditorRuntimeConfig {
+export interface VisualEditorRuntimeConfig {
   tagKey: string | string[]
   sourceMap: SourceMap
   editCSS?: boolean
@@ -47,12 +84,15 @@ declare const window: Window & typeof globalThis & {
   __VISUAL_EDITOR_CONFIG__?: VisualEditorRuntimeConfig
 }
 
+// 仅导入当前文件需要使用的函数，避免重复导入
+import { enableInlineEdit, generateContentVariants, startEdit } from './visual-editor-content'
+
 /**
  * 规范化路径名，处理各种路径格式转换和标准化
  * @param pathname 原始路径名
  * @returns 规范化后的路径名
  */
-function normalizePathname(pathname: string): string {
+export function normalizePathname(pathname: string): string {
   if (!pathname) return '/'
 
   try {
@@ -99,7 +139,7 @@ function normalizePathname(pathname: string): string {
  * @param pathname 原始路径名
  * @returns 路径候选数组
  */
-function buildPathCandidates(pathname: string): string[] {
+export function buildPathCandidates(pathname: string): string[] {
   const normalized = normalizePathname(pathname)
   const candidates = new Set<string>()
 
@@ -140,7 +180,7 @@ function buildPathCandidates(pathname: string): string[] {
  * @param key 要检查的键
  * @returns 是否为路径模式
  */
-function isPatternKey(key: string): boolean {
+export function isPatternKey(key: string): boolean {
   if (!key.startsWith('/')) return false
   return key.includes('*') || key.includes('[') || key.includes(':')
 }
@@ -150,7 +190,7 @@ function isPatternKey(key: string): boolean {
  * @param pattern 路径模式
  * @returns 对应的正则表达式或null
  */
-function patternToRegex(pattern: string): RegExp | null {
+export function patternToRegex(pattern: string): RegExp | null {
   if (!isPatternKey(pattern)) {
     return null
   }
@@ -210,7 +250,7 @@ function patternToRegex(pattern: string): RegExp | null {
  * @param sourceMap 源文件映射配置
  * @returns 匹配的源文件路径数组
  */
-function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
+export function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
   let res: any[] = []
   if (!sourceMap || typeof sourceMap !== 'object') {
     console.log('【未在nuxt.config.ts中查询到有效源文件映射配置】:', sourceMap)
@@ -255,7 +295,8 @@ function resolveSourceFiles(pathname: string, sourceMap: SourceMap): string[] {
     res = res.concat(defaultFiles)
   }
 
-  return res
+  // 数组元素删除前后空格后，再去重
+  return [...new Set(res.map(item => item.trim()))]
 }
 
 /**
@@ -327,7 +368,8 @@ export function initVisualEditor() {
 
   // 监听鼠标事件 - 使用事件委托
   document.addEventListener('mouseover', (e) => {
-    if (editorState.isEditing) return
+    const currentState = getEditorState();
+    if (currentState.isEditing) return
 
     const target = e.target as HTMLElement
     
@@ -349,7 +391,8 @@ export function initVisualEditor() {
   })
 
   document.addEventListener('mouseout', (e) => {
-    if (editorState.isEditing) return
+    const currentState = getEditorState();
+    if (currentState.isEditing) return
 
     const target = e.target as HTMLElement
     const relatedTarget = e.relatedTarget as HTMLElement
@@ -359,11 +402,14 @@ export function initVisualEditor() {
       return
     }
 
-    // 如果鼠标移出可编辑元素，延迟隐藏
+    // 如果鼠标移出可编辑元素，立即移除高亮并延迟隐藏按钮
     const editableElement = findEditableElement(target, tagKey)
     if (editableElement) {
-      // 检查是否移到了按钮容器上
-      if (!relatedTarget || !relatedTarget.closest('.visual-editor-btn-container')) {
+      // 检查是否移到了按钮容器上或元素的其他部分
+      if (!relatedTarget || !relatedTarget.closest('.visual-editor-btn-container') && !editableElement.contains(relatedTarget)) {
+        // 立即移除高亮效果
+        removeHighlight(editableElement)
+        // 延迟隐藏按钮
         scheduleHideButton()
       }
     }
@@ -478,7 +524,7 @@ function showEditButton(element: HTMLElement) {
 
   document.body.appendChild(buttonContainer)
   currentButton = buttonContainer
-  editorState.element = element
+  setEditorState({ element });
 }
 
 /**
@@ -501,37 +547,14 @@ function scheduleHideButton() {
   }, 20) // 200ms 延迟，给用户时间移到按钮上
 }
 
-/**
- * 高亮显示元素
- * @param element 要高亮的DOM元素
- */
-function highlightElement(element: HTMLElement) {
-  removeHighlight()
-  element.classList.add('visual-editor-highlight')
-  highlightedElement = element
-}
 
-/**
- * 移除元素的高亮效果
- */
-function removeHighlight() {
-  if (highlightedElement) {
-    // 移除双击事件监听器
-    const doubleClickHandler = (highlightedElement as any).__doubleClickHandler
-    if (doubleClickHandler) {
-      highlightedElement.removeEventListener('dblclick', doubleClickHandler)
-      delete (highlightedElement as any).__doubleClickHandler
-    }
-    
-    highlightedElement.classList.remove('visual-editor-highlight')
-    highlightedElement = null
-  }
-}
+
+
 
 /**
  * 隐藏编辑按钮
  */
-function hideEditButton() {
+export function hideEditButton() {
   clearHideButtonTimeout()
   removeHighlight()
   
@@ -545,8 +568,9 @@ function hideEditButton() {
   const containers = document.querySelectorAll('.visual-editor-btn-container')
   containers.forEach(container => container.remove())
 
-  if (!editorState.isEditing) {
-    editorState.element = null
+  const currentState = getEditorState();
+  if (!currentState.isEditing) {
+    setEditorState({ element: null });
   }
 }
 
@@ -638,9 +662,11 @@ async function startEdit(element: HTMLElement) {
   // 由于resolveSourceFiles函数已修改，default配置已自动包含在sourceFiles中，不再需要单独处理
   // 原有的default路径查找逻辑已被删除，因为default配置已自动包含在sourceFiles中
 
-  editorState.originalContent = originalContent
-  editorState.matches = matches
-  editorState.isEditing = true
+  setEditorState({
+    originalContent,
+    matches,
+    isEditing: true
+  });
 
   // 如果有多处匹配，先显示选择器
   if (matches.length > 1) {
@@ -719,7 +745,7 @@ async function searchContent(content: string, sourceFiles: string[]): Promise<Ma
  * @param html 要转义的HTML内容
  * @returns 转义后的字符串
  */
-function escapeHtml(html: string): string {
+export function escapeHtml(html: string): string {
   const div = document.createElement('div')
   div.textContent = html
   return div.innerHTML
@@ -730,7 +756,7 @@ function escapeHtml(html: string): string {
  * @param escaped 已转义的HTML内容
  * @returns 反转义后的HTML字符串
  */
-function unescapeHtml(escaped: string): string {
+export function unescapeHtml(escaped: string): string {
   const textarea = document.createElement('textarea')
   textarea.innerHTML = escaped
   return textarea.value
@@ -741,7 +767,7 @@ function unescapeHtml(escaped: string): string {
  * @param html HTML内容
  * @returns 移除scoped属性后的HTML
  */
-function removeScopedAttributes(html: string): string {
+export function removeScopedAttributes(html: string): string {
   if (!html) return html
   return html
     .replace(/\sdata-v-[a-zA-Z0-9_-]+="[^"]*"/g, '')
@@ -888,9 +914,8 @@ async function handleSave(element: HTMLElement) {
     return
   }
   
-  // 如果有多处匹配，使用第一个（或之前选择的）
-  const matchIndex = (element as any).__selectedMatchIndex || 0
-  await saveContent(newContent, matchIndex)
+  // 调用saveContent保存内容，传递正确的参数顺序
+  await saveContent(element, newContent)
 }
 
 /**
@@ -938,7 +963,7 @@ function cancelEdit(element: HTMLElement) {
   // 不再需要删除__searchHtml属性
   delete (element as any).__domOriginalContent
   
-  editorState.isEditing = false
+  setEditorState({ isEditing: false });
   removeHighlight()
 }
 
@@ -976,8 +1001,52 @@ function highlightContent(text: string, searchText: string): string {
  * @param str 要转义的字符串
  * @returns 转义后的字符串
  */
-function escapeRegex(str: string): string {
+export function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * 构建通配符正则表达式
+ * @param pattern 通配符模式
+ * @returns 正则表达式
+ */
+export function buildWildcardRegex(pattern: string): RegExp {
+  const wildcardRegexCache = new Map<string, RegExp>()
+  
+  if (wildcardRegexCache.has(pattern)) {
+    return wildcardRegexCache.get(pattern)! as RegExp
+  }
+
+  let regexString = '^'
+
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i]
+
+    if (char === '*') {
+      if (i + 1 < pattern.length && pattern[i + 1] === '*') {
+        // 匹配任意数量的字符和路径分隔符
+        regexString += '.*'
+        i++
+      } else {
+        // 匹配除路径分隔符外的任意字符
+        regexString += '[^/]*'
+      }
+    } else if (char === '?') {
+      // 匹配单个字符
+      regexString += '.?'
+    } else if (/[\\.\\+\\[\\]\\(\\)\\{\\}\\^\\$\\|]/.test(char)) {
+      // 转义正则表达式特殊字符
+      regexString += '\\' + char
+    } else {
+      regexString += char
+    }
+  }
+
+  regexString += '$'
+
+  const regex = new RegExp(regexString)
+  wildcardRegexCache.set(pattern, regex)
+  return regex
 }
 
 /**
@@ -1143,7 +1212,7 @@ function showMatchSelector(element: HTMLElement, matches: Match[]) {
  * @param message 通知内容
  * @param type 通知类型（success、error或warning，默认success）
  */
-function showNotification(message: string, type: 'success' | 'error' | 'warning' = 'success') {
+export function showNotification(message: string, type: 'success' | 'error' | 'warning' = 'success') {
   const notification = document.createElement('div')
   notification.className = `visual-editor-notification visual-editor-notification--${type}`
   notification.textContent = message
@@ -1318,384 +1387,22 @@ function createNativeEditorModal() {
   setTimeout(() => textarea.focus(), 100)
 }
 
-/**
- * 保存内容到文件
- * @param newContent 新的内容
- * @param matchIndex 匹配的索引
- */
-async function saveContent(newContent: string, matchIndex: number) {
-  const match = editorState.matches[matchIndex]
-  if (!match) return
 
-  try {
-    const response = await fetch('/api/visual-editor/update-file', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        file: match.file,
-        line: match.line,
-        originalContent: match.originalContent,
-        newContent: newContent
-      })
-    })
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || '保存失败')
-    }
+// ========== 导出公共函数 ==========
 
-    // 取消编辑状态
-    if (editorState.element) {
-      cancelEdit(editorState.element)
-    }
+// 导入content编辑相关函数
+import { startEditContent } from './visual-editor-content'
 
-    showNotification('保存成功！页面将自动刷新。', 'success')
-    setTimeout(() => {
-      window.location.reload()
-    }, 1000)
-  } catch (error: any) {
-    console.error('[Visual Editor] Save error:', error)
-    alert('保存失败：' + error.message)
-  }
-}
+// 导入CSS编辑相关函数
+import { startEditCSS } from './visual-editor-css'
 
-// ========== CSS 编辑功能 ==========
-
-/**
- * 搜索CSS文件中与指定元素相关的样式规则
- * @param element 目标DOM元素
- * @param cssFiles CSS文件路径数组
- * @returns CSS匹配结果Promise数组
- */
-async function searchCSS(element: HTMLElement, cssFiles: string[]): Promise<CssMatch[]> {
-  try {
-    // 获取元素的完整选择器信息（包含元素和父元素信息）
-    const elementSelector = getElementSelector(element)
-    
-    const response = await fetch('/api/visual-editor/search-css', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        elementSelector: elementSelector, // 传递对象而不是字符串
-        cssFiles: cssFiles
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error('搜索 CSS 失败')
-    }
-
-    const data = await response.json()
-    return data.matches || []
-  } catch (error) {
-    console.error('[Visual Editor] CSS search error:', error)
-    return []
-  }
-}
-
-/**
- * 获取元素的完整选择器信息
- * @param element 目标DOM元素
- * @returns 元素选择器信息对象
- */
-function getElementSelector(element: HTMLElement): {
-  elementInfo: {
-    tag: string
-    classes: string[]
-    id: string | null
-  }
-  parentInfo: Array<{
-    tag: string
-    classes: string[]
-    id: string | null
-  }>
-  selectorPath: string
-} {
-  const elementInfo = {
-    tag: element.tagName.toLowerCase(),
-    classes: getElementClasses(element),
-    id: element.id || null
-  }
-
-  const parentInfo: Array<{ tag: string; classes: string[]; id: string | null }> = []
-  let current: HTMLElement | null = element.parentElement
-
-  // 收集父元素信息（最多向上查找 5 层）
-  let depth = 0
-  while (current && current !== document.body && depth < 5) {
-    const classes = getElementClasses(current)
-    if (current.id || classes.length > 0) {
-      parentInfo.push({
-        tag: current.tagName.toLowerCase(),
-        classes: classes,
-        id: current.id || null
-      })
-    }
-    current = current.parentElement
-    depth++
-  }
-
-  // 生成选择器路径（用于调试）
-  const parts: string[] = []
-  let currentEl: HTMLElement | null = element
-  while (currentEl && currentEl !== document.body) {
-    let selector = currentEl.tagName.toLowerCase()
-    if (currentEl.id) {
-      selector += `#${currentEl.id}`
-    }
-    const classes = getElementClasses(currentEl)
-    if (classes.length > 0) {
-      selector += '.' + classes.join('.')
-    }
-    parts.unshift(selector)
-    currentEl = currentEl.parentElement
-  }
-  const selectorPath = parts.join(' > ')
-
-  return {
-    elementInfo,
-    parentInfo,
-    selectorPath
-  }
-}
-
-/**
- * 获取元素的类名（过滤掉scoped相关的类）
- * @param element 目标DOM元素
- * @returns 类名数组
- */
-function getElementClasses(element: HTMLElement): string[] {
-  if (!element.className) return []
-  
-  if (typeof element.className === 'string') {
-    return element.className
-      .split(' ')
-      .filter(c => {
-        const trimmed = c.trim()
-        // 过滤掉 scoped 相关的类（如 data-v-xxx）
-        return trimmed && !trimmed.startsWith('data-v-')
-      })
-  }
-  
-  // 处理 classList
-  if (element.classList) {
-    return Array.from(element.classList).filter(c => !c.startsWith('data-v-'))
-  }
-  
-  return []
-}
-
-/**
- * 开始编辑CSS样式
- * @param element 要编辑样式的DOM元素
- */
-async function startEditCSS(element: HTMLElement) {
-  hideEditButton()
-  removeHighlight()
-
-  const config = window.__VISUAL_EDITOR_CONFIG__
-  if (!config) {
-    showNotification('配置未找到', 'error')
-    return
-  }
-
-  // 获取当前页面路径
-  const currentPath = window.location.pathname
-  const sourceFiles = resolveSourceFiles(currentPath, config.sourceMap)
-  
-  // 打印查找到的本地文件列表
-  console.log('【Easy Editor】查找到的本地文件列表:', sourceFiles)
-
-  if (sourceFiles.length === 0) {
-    showNotification('未找到该页面对应的源文件配置，请在 nuxt.config.ts 中配置 sourceMap', 'warning')
-    return
-  }
-
-  // 搜索所有可能的文件（包括 Vue 文件中的 <style> 标签）
-  // 不再过滤，让后端处理所有文件类型
-  const allFiles = sourceFiles
-
-  // 不再需要重复检查，因为sourceFiles已经包含了default路径的处理
-  // allFiles直接使用sourceFiles的结果
-
-  // 搜索 CSS（包括 Vue 文件中的 <style> 标签）
-  const matches = await searchCSS(element, allFiles)
-
-  if (matches.length === 0) {
-    // 尝试使用default路径进行查找
-    console.log('尝试使用default路径进行CSS查找');
-    const defaultFiles = config.sourceMap?.default;
-    
-    if (Array.isArray(defaultFiles) && defaultFiles.length > 0) {
-      console.log('使用default路径进行CSS查找:', defaultFiles);
-      const defaultMatches = await searchCSS(element, defaultFiles);
-      
-      if (defaultMatches.length > 0) {
-        // 在default路径中找到CSS匹配
-        console.log('在default路径中找到CSS匹配:', defaultMatches);
-        showCSSDrawer(element, defaultMatches);
-        return;
-      }
-    }
-    
-    // 仍然找不到匹配，显示警告
-    showNotification('未在CSS文件和default路径中找到该元素的样式规则', 'warning');
-    return;
-  }
-
-  // 显示 CSS 编辑抽屉
-  showCSSDrawer(element, matches)
-}
-
-/**
- * 显示CSS编辑抽屉
- * @param element 要编辑样式的DOM元素
- * @param matches CSS匹配结果数组
- */
-function showCSSDrawer(element: HTMLElement, matches: CssMatch[]) {
-  // 创建遮罩层
-  const overlay = document.createElement('div')
-  overlay.id = 'visual-editor-css-drawer-overlay'
-  overlay.className = 'visual-editor-overlay'
-
-  // 创建抽屉容器
-  const drawer = document.createElement('div')
-  drawer.id = 'visual-editor-css-drawer'
-  drawer.className = 'visual-editor-drawer'
-
-  // 创建头部
-  const header = document.createElement('div')
-  header.className = 'visual-editor-drawer__header'
-
-  const title = document.createElement('h3')
-  title.textContent = '编辑 CSS 样式'
-  title.className = 'visual-editor-drawer__title'
-
-  const closeBtn = document.createElement('button')
-  closeBtn.innerHTML = '×'
-  closeBtn.className = 'visual-editor-drawer__close'
-  closeBtn.onclick = () => {
-    overlay.remove()
-    drawer.remove()
-  }
-
-  header.appendChild(title)
-  header.appendChild(closeBtn)
-  drawer.appendChild(header)
-
-  // 创建内容区
-  const content = document.createElement('div')
-  content.className = 'visual-editor-drawer__content'
-
-  // 如果有多处匹配，显示选择器
-  if (matches.length > 1) {
-    const selectorInfo = document.createElement('div')
-    selectorInfo.className = 'visual-editor-match-info'
-    selectorInfo.textContent = `找到 ${matches.length} 处匹配的 CSS 规则，请选择要编辑的规则：`
-    content.appendChild(selectorInfo)
-  }
-
-  // 显示 CSS 规则列表
-  matches.forEach((match, index) => {
-    const matchItem = document.createElement('div')
-    matchItem.className = 'visual-editor-match-item'
-
-    // 文件路径
-    const filePath = document.createElement('div')
-    filePath.textContent = match.file
-    filePath.className = 'visual-editor-match-item__file'
-
-    // 选择器
-    const selector = document.createElement('div')
-    selector.textContent = match.selector
-    selector.className = 'visual-editor-css-selector'
-
-    // CSS 代码编辑器
-    const textarea = document.createElement('textarea')
-    textarea.value = match.rules
-    textarea.className = 'visual-editor-css-textarea'
-
-    // 保存按钮
-    const saveBtn = document.createElement('button')
-    saveBtn.textContent = '保存'
-    saveBtn.className = 'visual-editor-css-save'
-    saveBtn.onclick = async () => {
-      const newRules = textarea.value.trim()
-      if (newRules === match.rules.trim()) {
-        showNotification('未修改内容', 'warning')
-        return
-      }
-
-      saveBtn.disabled = true
-      saveBtn.textContent = '保存中...'
-
-      try {
-        await saveCSS(match, newRules)
-        showNotification('保存成功！页面将自动刷新。', 'success')
-        setTimeout(() => {
-          window.location.reload()
-        }, 1000)
-      } catch (error: any) {
-        console.error('[Visual Editor] CSS save error:', error)
-        alert('保存失败：' + error.message)
-        saveBtn.disabled = false
-        saveBtn.textContent = '保存'
-      }
-    }
-
-    matchItem.appendChild(filePath)
-    matchItem.appendChild(selector)
-    matchItem.appendChild(textarea)
-    matchItem.appendChild(saveBtn)
-    content.appendChild(matchItem)
-  })
-
-  drawer.appendChild(content)
-
-  // 点击遮罩层关闭
-  overlay.onclick = (e) => {
-    if (e.target === overlay) {
-      overlay.remove()
-      drawer.remove()
-    }
-  }
-
-  document.body.appendChild(overlay)
-  document.body.appendChild(drawer)
-}
-
-/**
- * 保存CSS样式规则到源文件
- * @param match CSS匹配结果
- * @param newRules 新的CSS规则
- */
-async function saveCSS(match: CssMatch, newRules: string) {
-  try {
-    const response = await fetch('/api/visual-editor/update-css', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        file: match.file,
-        selector: match.selector,
-        originalRules: match.rules,
-        newRules: newRules,
-        line: match.line,
-        isScoped: match.isScoped || false
-      })
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || '保存失败')
-    }
-
-    const data = await response.json()
-    return data
-  } catch (error: any) {
-    console.error('[Visual Editor] CSS save error:', error)
-    throw error
-  }
+// 导出函数
+export {
+  startEditContent,
+  highlightElement,
+  removeHighlight,
+  saveContent,
+  startEditCSS
 }
 
