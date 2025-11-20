@@ -30,7 +30,7 @@ npm install -D nuxt-easy-editor
 export default defineNuxtConfig({
   modules: ['nuxt-easy-editor'],
   
-  visualEditor: {
+  easyEditor: {
     // 指定可编辑的标识（支持字符串或数组）
     // 可以是属性名（如 'easy-editor'）或 HTML 标签名（如 'h1', 'p'）
     tagKey: ['easy-editor', 'h1', 'h2', 'h3', 'p'],
@@ -64,7 +64,7 @@ export default defineNuxtConfig({
 
 **注意**：只需要 2 步即可使用：
 1. `npm install -D nuxt-easy-editor`
-2. 在 `nuxt.config.ts` 中配置 `modules` 和 `visualEditor`
+2. 在 `nuxt.config.ts` 中配置 `modules` 和 `easyEditor`
 
 ### 3. 在页面组件中添加可编辑标记
 

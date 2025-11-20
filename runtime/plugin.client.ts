@@ -1,22 +1,23 @@
 import { defineNuxtPlugin, useRuntimeConfig } from '#imports'
-import './css/visual-editor.css'
+import './css/style.css'
 
 export default defineNuxtPlugin(() => {
   if (typeof window === 'undefined') return
 
   const config = useRuntimeConfig()
-  const visualEditorConfig = config.public.visualEditor || {}
+  // 使用模块的configKey从public配置中获取，与module.ts保持一致
+  const easyEditorConfig = config.public.easyEditor || {}
 
   // 注入配置到全局
   window.__VISUAL_EDITOR_CONFIG__ = {
-    tagKey: visualEditorConfig.tagKey || 'easy-editor',
-    sourceMap: visualEditorConfig.sourceMap || {},
-    // 默认支持HTML搜索，不再需要searchHtml配置
-    editCSS: visualEditorConfig.editCSS ?? false
+    tagKey: easyEditorConfig.tagKey || 'easy-editor',
+    sourceMap: easyEditorConfig.sourceMap || {},
+    editCSS: easyEditorConfig.editCSS ?? false,
+    debug: easyEditorConfig.debug ?? false
   }
 
   // 初始化编辑器
-  import('./visual-editor').then((module) => {
+  import('./index').then((module) => {
     module.initVisualEditor(window.__VISUAL_EDITOR_CONFIG__)
   }).catch((error) => {
     console.error('[Visual Editor] Failed to initialize:', error)
@@ -28,8 +29,8 @@ declare global {
     __VISUAL_EDITOR_CONFIG__?: {
       tagKey: string | string[]
       sourceMap: Record<string, string[]>
-      // 不再需要searchHtml配置
       editCSS?: boolean
+      debug?: boolean
     }
   }
 }

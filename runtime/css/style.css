@@ -198,6 +198,79 @@
 }
 
 /* Editor content */
+
+/* Content edit toolbar */
+.content-edit-toolbar {
+  position: absolute;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 4px;
+  z-index: 9999;
+  display: flex;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Content edit toolbar buttons */
+.content-edit-toolbar button {
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.content-edit-save {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.content-edit-save:hover {
+  background-color: #2563eb;
+}
+
+.content-edit-cancel {
+  background-color: #f3f4f6;
+  color: #4b5563;
+}
+
+.content-edit-cancel:hover {
+  background-color: #e5e7eb;
+}
+
+/* Content editable active state */
+.content-editable-active {
+  outline: 2px solid #3b82f6;
+  border-radius: 4px;
+  background-color: rgba(59, 130, 246, 0.05);
+  transition: all 0.2s ease;
+}
+
+/* Content editable focus state */
+.content-editable-active:focus {
+  outline: 3px solid #2563eb;
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Improve typing experience in content editable */
+[contenteditable="true"] {
+  line-height: 1.5;
+  min-height: 20px;
+  cursor: text;
+}
+
+/* Prevent resize handle in WebKit browsers */
+[contenteditable="true"]::-webkit-resizer {
+  display: none;
+}
+
+/* Fix for Firefox to prevent focus border when not needed */
+[contenteditable="true"]:focus-visible {
+  outline: none;
+}
 .editor-content {
   margin-bottom: 24px;
 }

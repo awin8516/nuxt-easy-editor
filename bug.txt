@@ -10,24 +10,24 @@
 
 2. 文件重构要求：
 
-   2.1 /runtime/visual-editor.ts重构：
+   2.1 /runtime/index.ts重构：
       - 负责编辑器核心初始化流程，确保启动过程稳定可靠
       - 实现当前页面路由解析与本地文件路径列表获取功能
       - 开发鼠标滑入滑出交互功能的完整逻辑
       - 处理全局共享逻辑及提供公用方法导出接口
-      - 实现多匹配结果时的抽屉弹窗主框架初始化及关闭等公共逻辑(抽屉页面文件：/runtime/components/VisualEditor.vue)
+      - 实现多匹配结果时的抽屉弹窗主框架初始化及关闭等公共逻辑(抽屉页面文件：/runtime/components/searchResult.vue)
       - 通过调用startEditContent函数处理内容编辑入口，不包含具体编辑和保存逻辑
       - 通过调用startEditCSS函数处理CSS编辑入口，不包含具体编辑和保存逻辑
       - 检查并修复现有提纲中的编写错误，确保代码结构合理
 
-   2.2 /runtime/visual-editor-content.ts重构：
+   2.2 /runtime/edit-content.ts重构：
       - 实现startEditContent入口函数，接收editorState.element和sourceFiles参数
-      - 基于传入参数，开发完整的内容编辑功能逻辑
+      - 基于传入参数，开发完整的内容编辑功能逻辑，在页面原始目标元素上，用contenteditable属性，而不是创建新textarea
       - 实现内容保存机制，确保编辑内容能正确持久化
       - 代码需专注于内容编辑领域，不包含与CSS编辑相关的逻辑
       - 后端接口：/runtime/server/api/read-file.ts、/runtime/server/api/search-content.ts、/runtime/server/api/update-content.ts
 
-   2.3 /runtime/visual-editor-css.ts重构：
+   2.3 /runtime/edit-css.ts重构：
       - 实现startEditCSS入口函数，接收editorState.element和sourceFiles参数
       - 基于传入参数，开发完整的CSS编辑功能逻辑
       - 实现CSS保存机制，确保样式修改能正确应用和保存
@@ -36,7 +36,7 @@
 
    2.4 样式处理规范：
       - 所有样式必须使用className控制，禁止使用JS内联样式
-      - 样式代码统一编写在/runtime/css/visual-editor.css文件中
+      - 样式代码统一编写在/runtime/css/style.css文件中
       - 确保样式命名规范一致，遵循CSS模块化最佳实践
 
 3. 开发标准与质量要求：
@@ -47,13 +47,25 @@
    - 考虑不同使用场景下的兼容性问题
 
 4. 功能验证要求：
+   - 插件工作流程应该是，用户点击编辑按钮后，应该首先调用查询接口，接口返回只有1个匹配结果时才开启编辑状态，否则提示未查询到，当有多个匹配结果时，用户在抽屉弹窗选择后才开启编辑状态
    - 确保重构后的代码能够成功打包并发布到npmjs.com
    - 验证发布的包在目标项目中能够正常安装和使用
    - 确保所有功能模块之间的接口调用正确无误
 
 5. 架构原则：
-   - 严格遵循职责分离原则：/runtime/visual-editor.ts处理公共逻辑，visual-editor-content.ts和visual-editor-css.ts分别处理各自领域的私有逻辑
+   - 严格遵循职责分离原则：/runtime/index.ts处理公共逻辑，edit-content.ts和edit-css.ts分别处理各自领域的私有逻辑
    - 确保模块间低耦合高内聚，通过明确定义的接口进行通信
    - 避免代码重复，提取可复用逻辑至适当的公共方法
 
+
 请按照以上要求进行项目重构，确保最终产品满足NPMJS插件的质量标准和使用要求。
+
+在module.ts 追加debug参数，默认为false，当为true时，在浏览器页面console打印调试日志，包含以下：
+
+1、页面加载，打印页面路由变体，以及文件影射数组sourceFiles
+
+2、点击【编辑内容】按钮时，打印目标元素内容变体数组，以及变体分别在sourceFiles查找匹配内容的过程，如：在【aubot.vue】文件中查找【xxxx】 失败/成功
+
+3、点击 保存 按钮时，打印 更新【aubot.vue】文件【原始内容】为【新内容】 失败/成功
+
+4、其他可能报错的关键节点，打印日志供调试

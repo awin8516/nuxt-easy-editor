@@ -1,8 +1,8 @@
 // 导入content编辑入口函数
-import { startEditContent } from './visual-editor-content'
+import { startEditContent } from './edit-content'
 
 // 导入CSS编辑入口函数
-import { startEditCSS } from './visual-editor-css'
+import { startEditCSS } from './edit-css'
 
 // 源文件映射配置
 export interface SourceMap {
@@ -14,6 +14,7 @@ export interface VisualEditorRuntimeConfig {
   tagKey: string | string[]
   sourceMap: SourceMap
   editCSS?: boolean
+  debug?: boolean
 }
 
 // 编辑器状态
@@ -23,10 +24,16 @@ interface EditorState {
 }
 
 // 全局状态管理
-let editorState: EditorState = {
+export let editorState: EditorState = {
   element: null,
   isEditing: false
 }
+
+// 导入编辑器样式
+const link = document.createElement('link')
+link.rel = 'stylesheet'
+link.href = '/_nuxt/easy-editor/runtime/css/style.css'
+document.head.appendChild(link)
 
 // 当前高亮的元素
 let currentHighlightedElement: HTMLElement | null = null
@@ -48,10 +55,7 @@ export function buildRouteCandidates(routename: string): string[] {
     const candidate = `/${segments.slice(0, i).join('/')}`
     candidates.push(candidate)
   }
-  
-  // 添加默认路由
-  candidates.push('/')
-  
+    
   // 去重
   return Array.from(new Set(candidates))
 }
@@ -96,6 +100,18 @@ export function initVisualEditor(config: VisualEditorRuntimeConfig) {
   
   // 设置编辑器状态
   editorState.element = document.documentElement
+
+  console.log('[easyEditor] 配置:', config)
+
+  // 页面加载时的调试日志
+  if (config.debug) {
+    const routeCandidates = buildRouteCandidates(routename);
+    console.log('[Visual Editor] 页面加载:', {
+      页面路由: routename,
+      路由变体: routeCandidates,
+      文件映射数组: sourceFiles
+    });
+  }
   
   // 初始化编辑按钮
   const editContainer = document.createElement('div')
@@ -163,6 +179,12 @@ export function initVisualEditor(config: VisualEditorRuntimeConfig) {
 
   // 鼠标悬停事件
   document.addEventListener('mouseover', (e) => {
+    // 如果处于编辑状态，暂时禁用鼠标悬停功能并隐藏工具栏
+    if (editorState.isEditing) {
+      editContainer.style.display = 'none';
+      return
+    }
+    
     const target = e.target as HTMLElement
     const editableElement = findEditableTarget(target)
     
@@ -177,7 +199,7 @@ export function initVisualEditor(config: VisualEditorRuntimeConfig) {
       
       // 定位工具栏到高亮元素的右上角
       const rect = editableElement.getBoundingClientRect()
-      editContainer.style.left = `${rect.right + 5}px` // 5px 偏移量
+      editContainer.style.left = `${rect.right - 100}px` // 5px 偏移量
       editContainer.style.top = `${rect.top}px`
       editContainer.style.display = 'flex' // 显示工具栏
     }
@@ -185,6 +207,11 @@ export function initVisualEditor(config: VisualEditorRuntimeConfig) {
   
   // 鼠标移出事件
   document.addEventListener('mouseout', (e) => {
+    // 如果处于编辑状态，暂时禁用鼠标移出功能
+    if (editorState.isEditing) {
+      return
+    }
+    
     const target = e.target as HTMLElement
     const editableElement = findEditableTarget(target)
     
@@ -205,7 +232,7 @@ export function initVisualEditor(config: VisualEditorRuntimeConfig) {
       editContainer.style.display = 'none'
     } else if (!e.relatedTarget) {
       // 鼠标离开整个文档
-      if (currentHighlightedElement) {
+      if (currentHighlightedElement !== null) {
         currentHighlightedElement.classList.remove('hover-highlight')
         currentHighlightedElement = null
       }
@@ -218,7 +245,18 @@ export function initVisualEditor(config: VisualEditorRuntimeConfig) {
   editContentBtn.addEventListener('click', () => {
     const target = document.querySelector('.hover-highlight') as HTMLElement
     if (target) {
-      startEditContent(target, sourceFiles)
+      // 隐藏工具栏按钮
+      editContainer.style.display = 'none';
+      
+      // 点击编辑内容按钮时的调试日志
+      if (config.debug) {
+        console.log('[Visual Editor] 点击编辑内容按钮:', {
+          目标元素: target,
+          目标元素内容: target.innerHTML
+        });
+      }
+      
+      startEditContent(target, sourceFiles, config.debug)
     }
   })
   
@@ -226,7 +264,18 @@ export function initVisualEditor(config: VisualEditorRuntimeConfig) {
   editCSSBtn.addEventListener('click', () => {
     const target = document.querySelector('.hover-highlight') as HTMLElement
     if (target) {
-      startEditCSS(target, sourceFiles)
+      // 隐藏工具栏按钮
+      editContainer.style.display = 'none';
+      
+      // 点击编辑CSS按钮时的调试日志
+      if (config.debug) {
+        console.log('[Visual Editor] 点击编辑CSS按钮:', {
+          目标元素: target,
+          目标元素选择器: `tagName: ${target.tagName.toLowerCase()}, class: ${target.className}`
+        });
+      }
+      
+      startEditCSS(target, sourceFiles, config.debug)
     }
   })
 }

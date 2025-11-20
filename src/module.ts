@@ -31,6 +31,7 @@ export interface VisualEditorConfig {
   tagKey?: string | string[]
   sourceMap?: Record<string, string[]>
   editCSS?: boolean
+  debug?: boolean
 }
 
 export default defineNuxtModule<VisualEditorConfig>({
@@ -41,18 +42,21 @@ export default defineNuxtModule<VisualEditorConfig>({
   defaults: {
     tagKey: 'easy-editor',
     sourceMap: {},
-    editCSS: false
+    editCSS: false,
+    debug: false
   },
   setup(options, nuxt) {
-    // 只在开发环境启用
+    // 只在开发环境启用（第一要求）
     if (nuxt.options.dev) {
       // 将配置注入到 runtimeConfig
       nuxt.options.runtimeConfig.public = nuxt.options.runtimeConfig.public || {}
-      nuxt.options.runtimeConfig.public.visualEditor = {
+      // 使用模块的configKey作为public配置属性名，确保配置正确传递
+      nuxt.options.runtimeConfig.public.easyEditor = {
         tagKey: options.tagKey || 'easy-editor',
         sourceMap: options.sourceMap || {},
         // 默认支持HTML搜索，不再需要searchHtml配置
-        editCSS: options.editCSS ?? false
+        editCSS: options.editCSS ?? false,
+        debug: options.debug ?? false
       }
 
       // 添加客户端插件
@@ -63,29 +67,29 @@ export default defineNuxtModule<VisualEditorConfig>({
 
       // 添加服务端 API 路由
       addServerHandler({
-        route: '/api/visual-editor/read-file',
+        route: '/api/easy-editor/read-file',
         handler: resolveRuntimeFile('server/api/read-file')
       })
 
       addServerHandler({
-        route: '/api/visual-editor/search-content',
+        route: '/api/easy-editor/search-content',
         handler: resolveRuntimeFile('server/api/search-content')
       })
 
       addServerHandler({
-        route: '/api/visual-editor/update-content',
+        route: '/api/easy-editor/update-content',
         handler: resolveRuntimeFile('server/api/update-content')
       })
 
       // 添加 CSS 编辑相关的 API 路由（仅在 editCSS 为 true 时）
       if (options.editCSS) {
         addServerHandler({
-          route: '/api/visual-editor/search-css',
+          route: '/api/easy-editor/search-css',
           handler: resolveRuntimeFile('server/api/search-css')
         })
 
         addServerHandler({
-          route: '/api/visual-editor/update-css',
+          route: '/api/easy-editor/update-css',
           handler: resolveRuntimeFile('server/api/update-css')
         })
       }
