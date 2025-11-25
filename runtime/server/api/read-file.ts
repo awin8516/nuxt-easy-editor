@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises'
 import { join } from 'path'
+import { defineEventHandler, getQuery } from 'h3'
 
 export default defineEventHandler(async (event) => {
   try {

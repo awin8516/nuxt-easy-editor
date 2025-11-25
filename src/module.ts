@@ -65,6 +65,12 @@ export default defineNuxtModule<VisualEditorConfig>({
         mode: 'client'
       })
 
+      // 添加服务端 API 文件查找
+      addServerHandler({
+        route: '/api/easy-editor/find-file',
+        handler: resolveRuntimeFile('server/api/find-file')
+      })
+
       // 添加服务端 API 路由
       addServerHandler({
         route: '/api/easy-editor/read-file',

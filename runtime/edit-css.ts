@@ -1,6 +1,5 @@
 import { createApp, defineComponent, h } from 'vue'
-import VisualEditor from './components/searchResult.vue'
-import matchSelectorDrawer from './components/matchSelectorDrawer.vue'
+import searchResult from './components/searchResult.vue'
 
 interface Match {
   file: string
@@ -86,7 +85,7 @@ export async function startEditCSS(element: HTMLElement, sourceFiles: string[], 
       if (debug) {
         console.log('[easyEditor] 找到多个CSS匹配结果，需要用户选择')
       }
-      showMatchSelectorDrawer(matches, async (selectedIndex) => {
+      showSearchResultSelector(matches, async (selectedIndex) => {
         await openCSSEditor(element, sourceFiles, selector, [matches[selectedIndex]], debug)
       })
     }
@@ -229,14 +228,14 @@ async function openCSSEditor(element: HTMLElement, sourceFiles: string[], select
  * @param element DOM元素
  * @returns CSS选择器字符串
  */
-// 显示匹配选择抽屉
-function showMatchSelectorDrawer(matches: Match[], onSelect: (index: number) => void) {
+// 显示搜索结果选择器
+function showSearchResultSelector(matches: Match[], onSelect: (index: number) => void) {
   const container = document.createElement('div')
   document.body.appendChild(container)
 
   const app = createApp(defineComponent({
     render() {
-      return h(matchSelectorDrawer, {
+      return h(searchResult, {
         isVisible: true,
         title: '选择要修改的CSS规则',
         matches,

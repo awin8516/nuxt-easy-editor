@@ -36,7 +36,8 @@
   },
   "dependencies": {
     "@nuxt/kit": "^3.8.0",
-    "fast-glob": "^3.3.2"
+    "fast-glob": "^3.3.2",
+    "h3": "^1.10.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

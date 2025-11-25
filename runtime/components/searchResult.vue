@@ -1,20 +1,20 @@
 <template>
-  <div v-if="isEditing" class="visual-editor-overlay" @click.self="cancelEdit">
-    <div class="visual-editor-modal">
-      <div class="visual-editor-header">
-        <h3>编辑内容</h3>
-        <button @click="cancelEdit" class="close-btn">×</button>
-      </div>
-      <div class="visual-editor-body">
-        <div v-if="matches.length > 1" class="match-selector">
-          <p>找到 {{ matches.length }} 处匹配，请选择要修改的位置：</p>
+  <transition name="drawer">
+    <div v-if="isVisible" class="drawer-overlay" @click.self="close">
+      <div class="drawer-container" :class="direction">
+        <div class="drawer-header">
+          <h3>{{ title }}</h3>
+          <button @click="close" class="close-btn">×</button>
+        </div>
+        <div class="drawer-body">
+          <p class="drawer-subtitle">找到 {{ matches.length }} 处匹配，请选择要修改的位置：</p>
           <div class="match-list">
             <div
               v-for="(match, index) in matches"
               :key="index"
               class="match-item"
-              :class="{ active: selectedMatchIndex === index }"
-              @click="selectedMatchIndex = index"
+              :class="{ active: selectedIndex === index }"
+              @click="selectMatch(index)"
             >
               <div class="match-info">
                 <strong>{{ match.file }}</strong>
@@ -24,29 +24,17 @@
             </div>
           </div>
         </div>
-        <div class="editor-content">
-          <label>内容：</label>
-          <textarea
-            v-model="editValue"
-            class="editor-textarea"
-            rows="6"
-            @keydown.ctrl.enter="saveEdit"
-            @keydown.meta.enter="saveEdit"
-          ></textarea>
+        <div class="drawer-footer">
+          <button @click="close" class="btn btn-cancel">取消</button>
+          <button @click="confirmSelection" class="btn btn-confirm">确定</button>
         </div>
       </div>
-      <div class="visual-editor-footer">
-        <button @click="cancelEdit" class="btn btn-cancel">取消</button>
-        <button @click="saveEdit" class="btn btn-save" :disabled="saving">
-          {{ saving ? '保存中...' : '保存' }}
-        </button>
-      </div>
     </div>
-  </div>
+  </transition>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 
 interface Match {
   file: string
@@ -56,51 +44,35 @@ interface Match {
 }
 
 const props = defineProps<{
-  modelValue: boolean
-  originalContent: string
+  isVisible: boolean
+  title: string
   matches: Match[]
+  direction?: 'right' | 'left' | 'top' | 'bottom'
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  save: [content: string, matchIndex: number]
+  close: []
+  select: [matchIndex: number]
 }>()
 
-const isEditing = ref(props.modelValue)
-const editValue = ref(props.originalContent)
-const selectedMatchIndex = ref(0)
-const saving = ref(false)
+const selectedIndex = ref(0)
 
-watch(() => props.modelValue, (val) => {
-  isEditing.value = val
-  if (val) {
-    editValue.value = props.originalContent
-    selectedMatchIndex.value = 0
-  }
-})
-
-watch(() => props.originalContent, (val) => {
-  editValue.value = val
-})
-
-const cancelEdit = () => {
-  emit('update:modelValue', false)
+const close = () => {
+  emit('close')
 }
 
-const saveEdit = async () => {
-  if (saving.value) return
-  saving.value = true
-  try {
-    await emit('save', editValue.value, selectedMatchIndex.value)
-    emit('update:modelValue', false)
-  } finally {
-    saving.value = false
-  }
+const selectMatch = (index: number) => {
+  selectedIndex.value = index
+}
+
+const confirmSelection = () => {
+  emit('select', selectedIndex.value)
+  close()
 }
 </script>
 
 <style scoped>
-.visual-editor-overlay {
+.drawer-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -108,32 +80,40 @@ const saveEdit = async () => {
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
   z-index: 999999;
   color: #000;
 }
 
-.visual-editor-modal {
+.drawer-container {
   background: white;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 600px;
-  max-height: 90vh;
+  width: 400px;
+  max-width: 80vw;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
 }
 
-.visual-editor-header {
+.drawer-container.right {
+  margin-left: auto;
+}
+
+.drawer-container.left {
+  margin-right: auto;
+}
+
+.drawer-header {
   padding: 16px 20px;
   border-bottom: 1px solid #e5e7eb;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
-.visual-editor-header h3 {
+.drawer-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
@@ -159,18 +139,14 @@ const saveEdit = async () => {
   color: #374151;
 }
 
-.visual-editor-body {
+.drawer-body {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
 }
 
-.match-selector {
-  margin-bottom: 20px;
-}
-
-.match-selector p {
-  margin: 0 0 12px 0;
+.drawer-subtitle {
+  margin: 0 0 16px 0;
   color: #6b7280;
   font-size: 14px;
 }
@@ -178,15 +154,13 @@ const saveEdit = async () => {
 .match-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 200px;
-  overflow-y: auto;
+  gap: 10px;
 }
 
 .match-item {
-  padding: 12px;
+  padding: 14px;
   border: 2px solid #e5e7eb;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -205,17 +179,26 @@ const saveEdit = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .match-info strong {
   color: #111827;
   font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 10px;
 }
 
 .match-location {
   color: #6b7280;
   font-size: 12px;
+  white-space: nowrap;
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 12px;
 }
 
 .match-preview {
@@ -225,43 +208,17 @@ const saveEdit = async () => {
   white-space: pre-wrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-height: 40px;
+  max-height: 50px;
+  line-height: 1.4;
 }
 
-.editor-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.editor-content label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #374151;
-}
-
-.editor-textarea {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  font-family: inherit;
-  resize: vertical;
-  outline: none;
-}
-
-.editor-textarea:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.visual-editor-footer {
+.drawer-footer {
   padding: 16px 20px;
   border-top: 1px solid #e5e7eb;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .btn {
@@ -283,18 +240,38 @@ const saveEdit = async () => {
   background: #e5e7eb;
 }
 
-.btn-save {
+.btn-confirm {
   background: #3b82f6;
   color: white;
 }
 
-.btn-save:hover:not(:disabled) {
+.btn-confirm:hover {
   background: #2563eb;
 }
 
-.btn-save:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+/* 过渡动画 */
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: all 0.3s ease;
+}
+
+.drawer-enter-from .drawer-container.right,
+.drawer-leave-to .drawer-container.right {
+  transform: translateX(100%);
+}
+
+.drawer-enter-from .drawer-container.left,
+.drawer-leave-to .drawer-container.left {
+  transform: translateX(-100%);
+}
+
+.drawer-enter-from .drawer-container.top,
+.drawer-leave-to .drawer-container.top {
+  transform: translateY(-100%);
+}
+
+.drawer-enter-from .drawer-container.bottom,
+.drawer-leave-to .drawer-container.bottom {
+  transform: translateY(100%);
 }
 </style>
-

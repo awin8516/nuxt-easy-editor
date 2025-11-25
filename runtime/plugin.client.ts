@@ -17,8 +17,8 @@ export default defineNuxtPlugin(() => {
   }
 
   // 初始化编辑器
-  import('./index').then((module) => {
-    module.initVisualEditor(window.__VISUAL_EDITOR_CONFIG__)
+  import('./index').then(async (module) => {
+    await module.initVisualEditor(window.__VISUAL_EDITOR_CONFIG__)
   }).catch((error) => {
     console.error('[Visual Editor] Failed to initialize:', error)
   })

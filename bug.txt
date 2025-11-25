@@ -69,3 +69,21 @@
 3、点击 保存 按钮时，打印 更新【aubot.vue】文件【原始内容】为【新内容】 失败/成功
 
 4、其他可能报错的关键节点，打印日志供调试
+
+sourceMap: {
+            // 动态文件路径支持（使用通配符）
+            '/about': [
+                'src/pages/about.vue', 
+                'src/i18n/**/*.json',
+                'src/composables/useHonourList.js'
+            ],
+            // 动态路由支持（使用通配符）
+            '/works/*': [
+                'src/pages/works/[id].vue',
+                'src/composables/useCaseList.js'
+            ]
+        }
+
+配置中有route通配符，和文件路径通配符，需要查找本地文件，最终返回真实的文件路径;
+1、在API目录下新建一个后端接口 find-file.ts
+2、在resolveSourceFiles方法中调用find-file接口，解析通配符并查找真实的本地文件路径

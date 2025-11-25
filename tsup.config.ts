@@ -14,7 +14,8 @@ export default defineConfig({
     'runtime/server/api/search-css': 'runtime/server/api/search-css.ts',
     'runtime/server/api/update-content': 'runtime/server/api/update-content.ts',
     'runtime/server/api/update-css': 'runtime/server/api/update-css.ts',
-    'runtime/server/api/utils': 'runtime/server/api/utils.ts'
+    'runtime/server/api/utils': 'runtime/server/api/utils.ts',
+    'runtime/server/api/find-file': 'runtime/server/api/find-file.ts'
   },
   // 只输出ESM格式，现代标准
   format: ['esm'],
