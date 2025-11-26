@@ -87,3 +87,50 @@ sourceMap: {
 配置中有route通配符，和文件路径通配符，需要查找本地文件，最终返回真实的文件路径;
 1、在API目录下新建一个后端接口 find-file.ts
 2、在resolveSourceFiles方法中调用find-file接口，解析通配符并查找真实的本地文件路径
+
+
+目前碰到的问题是：
+本地文件内容格式各不相同，可能会有：
+1、VUE文件，内容形式可能是 <p>包含<b>HTML</b><br /></p>，甚至有换行、缩进等各种复杂的格式；
+2、json文件，内容形式可能是 "title": "Authentic Marketing,\nUnforgettable lmpact.", 包含 \n 这类特殊字符
+浏览器渲染后可能是另一个格式，导致内容匹配成功率不高。虽然现在有原始内容变体函数生成几个变体，但仍无法覆盖所有的可能，特别是VUE文件中有换行、缩进复杂格式时。
+
+请结合插件功能，推荐最优方案，解决用浏览器渲染后的内容，快速准确的匹配本地文件中内容，先不要修改任何文件，先给出你的思路及细节方案，供我确认
+
+
+vue文件，如果用className、id呢，
+比如目标元素如有id，因为ID是页面唯一，应该可能快速查找template内容ID
+如果目标元素只有className，可以继续查找几层父元素的className、id，目的是给原始内容找到一个唯一标识DOM结构，再去template中匹配同样结构的内容，
+实例化就是：如：替换页面中ID为“pageTitle”元素的第2个DIV子元素中第3个P标签内容
+分析下可行性，及跟你的方案的对比下。先不要修改任何本地文件。
+
+重新强调下各文件的职责，请重新修改：
+1、runtime\index.ts，
+   - 负责编辑器核心初始化流程，确保启动过程稳定可靠
+   - 实现当前页面路由解析与本地文件路径列表获取功能，注意支持通配符
+   - 开发鼠标滑入滑出交互功能的完整逻辑
+   - 处理全局共享逻辑及提供公用方法导出接口
+   - 实现多匹配结果时的抽屉弹窗主框架初始化及关闭等公共逻辑(抽屉页面文件：/runtime/components/searchResult.vue)
+   - 通过调用startEditContent函数处理内容编辑入口，不包含具体编辑和保存逻辑
+   - 通过调用startEditCSS函数处理CSS编辑入口，不包含具体编辑和保存逻辑
+   - 检查并修复现有提纲中的编写错误，确保代码结构合理，
+2、runtime\edit-content.ts
+   - 实现startEditContent入口函数，接收目标element和sourceFiles参数
+   - 基于传入参数，调用runtime\server\api\search-content.ts接口，
+   - 根据接口返回的匹配结果，如果单个结果，直接在页面原始目标元素上，用contenteditable属性，而不是创建新textarea，如果多个结果，调用抽屉插件显示多个结果供用户选择。
+   - 内容修改后，点击保存，调用runtime\server\api\update-content.ts实现内容保存机制，确保编辑内容能正确持久化
+   - 代码需专注于内容编辑领域，不包含与CSS编辑相关的逻辑
+3、runtime\server\api\search-content.ts
+   - 接口负责内容匹配逻辑，并返回单个或多个结果
+   - 渐进式实现：
+      先实现ID快速匹配（最高优先级）
+      再添加DOM结构匹配
+      最后整合内容变体匹配作为兜底
+4、runtime\server\api\update-content.ts
+   - 用户已选择的结果修改后，负责对应的本地文件更新。
+
+CSS编辑再不做变更，后续再单独优化
+
+5、runtime\edit-css.ts
+6、runtime\server\api\search-css.ts
+7、runtime\server\api\update-css.ts

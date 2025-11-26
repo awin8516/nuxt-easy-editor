@@ -29,20 +29,6 @@ export let editorState: EditorState = {
   isEditing: false
 }
 
-// 导入编辑器样式
-const link = document.createElement('link')
-link.rel = 'stylesheet'
-// 尝试不同的CSS文件路径，确保能正确加载
-link.href = '/_nuxt/easy-editor/runtime/css/style.css'
-
-// 添加错误处理，如果CSS加载失败，尝试使用备用路径
-link.onerror = function() {
-  console.warn('尝试使用备用CSS路径')
-  link.href = '/easy-editor/runtime/css/style.css'
-}
-
-document.head.appendChild(link)
-
 // 当前高亮的元素
 let currentHighlightedElement: HTMLElement | null = null
 
@@ -65,7 +51,7 @@ export function buildRouteCandidates(routename: string): string[] {
   }
   // 去重
   const routes = Array.from(new Set(candidates))
-  console.log('[buildRouteCandidates] 生成的路由候选列表:', routes) 
+  console.log('【生成的路由候选列表】', routes) 
   return routes
 }
 
@@ -124,28 +110,7 @@ export async function resolveSourceFiles(routename: string, sourceMap: SourceMap
   return uniqueSourceFiles
 }
 
-// 生成rawHtmlContent的内容变体数组
-export function generateContentVariants(content: string): string[] {
-  const variants: string[] = []
 
-  // 变体1: 默认原始不变
-  variants.push(content)
-
-  // 变体2: 替换前后空格或特殊字符
-  variants.push(content.replace(/^[\s\u00a0]+|[\s\u00a0]+$/g, ''))
-
-  // 变体3: 浏览器页面中换行，替换成<br>
-  variants.push(content.replace(/\n/g, '<br>'))
-
-  // 变体4: 浏览器页面中换行，替换成<br />
-  variants.push(content.replace(/\n/g, '<br />'))
-
-  // 变体5: 浏览器页面中换行，保持为\n（不做转换）
-  variants.push(content.replace(/\n/g, '\\n'))
-
-  // 数组去重
-  return [...new Set(variants)]
-}
 
 /**
  * 初始化可视化编辑器
@@ -153,6 +118,7 @@ export function generateContentVariants(content: string): string[] {
  * @description 初始化可视化编辑器，配置标签键、绑定高亮事件、源文件映射和是否编辑CSS
  */
 export async function initVisualEditor(config: VisualEditorRuntimeConfig) {
+  console.log('【easyEditor配置】', config)
   // 获取当前页面路由
   const routename = window.location.pathname || '/' 
 
@@ -161,18 +127,6 @@ export async function initVisualEditor(config: VisualEditorRuntimeConfig) {
 
   // 设置编辑器状态
   editorState.element = document.documentElement
-
-  console.log('[easyEditor] 配置:', config)
-
-  // 页面加载时的调试日志
-  if (config.debug) {
-    const routeCandidates = buildRouteCandidates(routename);
-    console.log('[Visual Editor] 页面加载:', {
-      页面路由: routename,
-      路由变体: routeCandidates,
-      文件映射数组: sourceFiles
-    });
-  }
 
   // 初始化编辑按钮
   const editContainer = document.createElement('div')
@@ -308,15 +262,6 @@ export async function initVisualEditor(config: VisualEditorRuntimeConfig) {
     if (target) {
       // 隐藏工具栏按钮
       editContainer.style.display = 'none';
-
-      // 点击编辑内容按钮时的调试日志
-      if (config.debug) {
-        console.log('【编辑内容】', {
-          目标元素: target,
-          目标元素内容: target.innerHTML
-        });
-      }
-
       startEditContent(target, sourceFiles, config.debug)
     }
   })
@@ -327,15 +272,6 @@ export async function initVisualEditor(config: VisualEditorRuntimeConfig) {
     if (target) {
       // 隐藏工具栏按钮
       editContainer.style.display = 'none';
-
-      // 点击编辑CSS按钮时的调试日志
-      if (config.debug) {
-        console.log('【编辑CSS】', {
-          目标元素: target,
-          目标元素选择器: `tagName: ${target.tagName.toLowerCase()}, class: ${target.className}`
-        });
-      }
-
       startEditCSS(target, sourceFiles, config.debug)
     }
   })
