@@ -118,14 +118,33 @@ function findIdMatches(filePath: string, fileContent: string, elementId: string,
   const idPattern = new RegExp(`id=["']${escapeRegExp(elementId)}["']`)
   
   // 使用非全局正则表达式，只查找第一个匹配项
-  const match = idPattern.exec(fileContent)
-  if (match) {
-    const lineNumber = fileContent.slice(0, match.index).split('\n').length
-    const context = getContext(fileContent, lineNumber)
+  const idMatch = idPattern.exec(fileContent)
+  if (idMatch) {
+    // 首先找到ID元素的位置
+    const idIndex = idMatch.index
     
-    // 在ID附近查找内容
-    const surroundingContent = getSurroundingContent(fileContent, match.index, 200)
-    if (surroundingContent.includes(originalContent)) {
+    // 找到ID元素所在行
+    const linesBeforeId = fileContent.slice(0, idIndex).split('\n')
+    const idLineNumber = linesBeforeId.length
+    
+    // 计算ID元素后的内容范围，向前看5行，向后看50行，避免查找范围过大
+    const searchStartIndex = Math.max(0, idIndex - 500)
+    const searchEndIndex = Math.min(fileContent.length, idIndex + 5000)
+    const relevantContent = fileContent.slice(searchStartIndex, searchEndIndex)
+    
+    // 在相关内容中查找原始内容
+    const contentMatchIndex = relevantContent.indexOf(originalContent)
+    
+    if (contentMatchIndex !== -1) {
+      // 计算内容实际所在行号
+      const actualContentIndex = searchStartIndex + contentMatchIndex
+      const linesBeforeContent = fileContent.slice(0, actualContentIndex).split('\n')
+      const contentLineNumber = linesBeforeContent.length
+      
+      // 使用内容行号而不是ID行号
+      const lineNumber = contentLineNumber
+      const context = getContext(fileContent, lineNumber)
+      
       matches.push({
         file: filePath,
         line: lineNumber,
@@ -133,6 +152,17 @@ function findIdMatches(filePath: string, fileContent: string, elementId: string,
         originalContent,
         matchType: 'id',
         confidence: 1.0
+      })
+    } else {
+      // 如果找不到精确内容，回退到使用ID所在行号
+      const context = getContext(fileContent, idLineNumber)
+      matches.push({
+        file: filePath,
+        line: idLineNumber,
+        context,
+        originalContent,
+        matchType: 'id',
+        confidence: 0.9 // 降低置信度，因为是回退方案
       })
     }
   }

@@ -1,17 +1,24 @@
 // visual-editor-content.ts
 
 import { editorState } from './index'
-import { createApp, defineComponent, h } from 'vue'
+import { createApp, defineComponent, h, ref } from 'vue'
 import searchResult from './components/searchResult.vue'
 
-/**
- * 匹配结果接口
- */
-export interface MatchResult {
-  score: number;
-  start: number;
-  end: number;
-  variantIndex: number;
+// 全局编辑状态存储，替代元素属性存储
+interface EditState {
+  originalContent: string;
+  matchedVariant?: string;
+  selectedMatch?: ContentMatch;
+  originalStyle?: string;
+}
+
+// 全局Map存储每个元素的编辑状态，使用元素唯一标识作为键
+const editStates = new Map<string, EditState>();
+
+// 获取元素的唯一标识符（用于Map的键）
+function getElementKey(element: HTMLElement): string {
+  // 使用元素的位置和创建时间作为唯一标识
+  return `${element.tagName.toLowerCase()}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 /**
@@ -80,258 +87,6 @@ export interface ContentMatch {
 }
 
 /**
- * 基于ID的快速匹配函数
- * @param domPath 元素的DOM路径
- * @param fileContent 文件内容
- * @param fileType 文件类型
- * @returns 匹配结果或null
- */
-export function matchById(domPath: string, fileContent: string, fileType: string): MatchResult | null {
-  // 从DOM路径中提取ID
-  const idMatch = domPath.match(/#([a-z][\w-]*)/i);
-  if (!idMatch) return null;
-  
-  const elementId = idMatch[1];
-  
-  // Vue文件特殊处理
-  if ((fileType === 'vue' || fileType === '.vue')) {
-    const templateMatch = fileContent.match(/<template[\s\S]*?>([\s\S]*?)<\/template>/);
-    if (templateMatch) {
-      const templateContent = templateMatch[1];
-      // 构建ID选择器正则表达式，考虑多种引号情况
-      const idRegex = new RegExp(
-        `<([a-z][a-z0-9:-]*)[^>]*id=["']${elementId}["'][^>]*>`, 
-        'gi'
-      );
-      
-      let match;
-      let bestMatch: MatchResult | null = null;
-      
-      while ((match = idRegex.exec(templateContent)) !== null) {
-        const start = templateMatch.index + 1 + match.index; // 考虑<template>标签的长度
-        const end = start + match[0].length;
-        
-        // 设置高匹配分数（0.95）
-        const currentMatch: MatchResult = {
-          score: 0.95,
-          start,
-          end,
-          variantIndex: 0
-        };
-        
-        // 如果没有最佳匹配或当前匹配更好，更新最佳匹配
-        if (!bestMatch || currentMatch.score > bestMatch.score) {
-          bestMatch = currentMatch;
-        }
-      }
-      
-      return bestMatch;
-    }
-  }
-  
-  // 通用ID匹配（适用于HTML等文件）
-  const idRegex = new RegExp(
-    `<([a-z][a-z0-9:-]*)[^>]*id=["']${elementId}["'][^>]*>`, 
-    'gi'
-  );
-  
-  let match;
-  let bestMatch: MatchResult | null = null;
-  
-  while ((match = idRegex.exec(fileContent)) !== null) {
-    const start = match.index;
-    const end = start + match[0].length;
-    
-    const currentMatch: MatchResult = {
-      score: 0.9,
-      start,
-      end,
-      variantIndex: 0
-    };
-    
-    if (!bestMatch || currentMatch.score > bestMatch.score) {
-      bestMatch = currentMatch;
-    }
-  }
-  
-  return bestMatch;
-}
-
-/**
- * 基于DOM结构匹配元素在文件中的位置
- * @param domPath 元素的DOM路径
- * @param fileContent 文件内容
- * @param fileType 文件类型
- * @returns 匹配结果或null
- */
-export function matchByDomStructure(domPath: string, fileContent: string, fileType: string): MatchResult | null {
-  // 解析DOM路径为段
-  const pathSegments = domPath.split('\u003e').map(segment => segment.trim()).filter(Boolean);
-  
-  // Vue文件特殊处理
-  let contentToSearch = fileContent;
-  if ((fileType === 'vue' || fileType === '.vue')) {
-    const templateMatch = fileContent.match(/\u003ctemplate[\s\S]*?\u003e([\s\S]*?)\u003c\/template\u003e/);
-    if (templateMatch) {
-      contentToSearch = templateMatch[1];
-    }
-  }
-  
-  // 尝试从DOM路径构建正则表达式进行匹配
-  const bestMatch = findBestStructuralMatch(pathSegments, contentToSearch, fileType);
-  
-  if (bestMatch) {
-    return bestMatch;
-  }
-  
-  // 如果完整路径匹配失败，尝试匹配路径的子集（从末尾开始）
-  for (let i = 1; i < pathSegments.length - 1; i++) {
-    const partialPath = pathSegments.slice(i);
-    const partialMatch = findBestStructuralMatch(partialPath, contentToSearch, fileType);
-    if (partialMatch) {
-      // 部分匹配的分数较低
-      partialMatch.score = 0.7 - (i * 0.1);
-      return partialMatch;
-    }
-  }
-  
-  return null;
-}
-
-/**
- * 查找最佳的结构匹配
- */
-function findBestStructuralMatch(pathSegments: string[], content: string, fileType: string): MatchResult | null {
-  // 针对每个路径段构建正则表达式部分
-  const regexParts: string[] = [];
-  
-  // 跳过html和body段，它们在模板中可能不存在
-  const relevantSegments = pathSegments.filter(segment => segment !== 'html' && segment !== 'body');
-  
-  if (relevantSegments.length === 0) return null;
-  
-  // 为每个相关段构建正则表达式
-  for (const segment of relevantSegments) {
-    let part = segment;
-    
-    // 转义正则特殊字符
-    part = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    
-    // 处理ID选择器
-    part = part.replace(/#([a-z][\w-]*)/i, '(?:id=["\']$1["\']|id=$1)');
-    
-    // 处理类选择器（转换为可选条件）
-    part = part.replace(/\.([a-z][\w-]*)/gi, '(?:class=["\'](?:.*\\s)?$1(?:\\s.*)?["\']|class=(?:.*\\s)?$1(?:\\s.*)?)');
-    
-    // 移除:nth-child选择器（在匹配模板时不太适用）
-    part = part.replace(/:nth-child\(\d+\)/g, '');
-    
-    // 构建标签匹配部分
-    const tagMatch = part.match(/^([a-z][a-z0-9:-]*)/i);
-    if (tagMatch) {
-      const tagName = tagMatch[1];
-      // 构建完整的标签正则表达式部分
-      const tagRegex = `\\u003c${tagName}[^\\u003e]*\\u003e`;
-      regexParts.push(tagRegex);
-    }
-  }
-  
-  // 如果没有有效的正则部分，返回null
-  if (regexParts.length === 0) return null;
-  
-  // 构建完整的正则表达式，允许中间有其他内容
-  const combinedRegex = new RegExp(regexParts.join('.*?'), 'is');
-  
-  const match = combinedRegex.exec(content);
-  if (match) {
-    return {
-      score: 0.8,
-      start: match.index,
-      end: match.index + match[0].length,
-      variantIndex: 0
-    };
-  }
-  
-  return null;
-}
-
-/**
- * 混合匹配策略函数
- * 按照优先级顺序尝试不同的匹配方法
- * @param domPath 元素的DOM路径
- * @param fileContent 文件内容
- * @param fileType 文件类型
- * @param originalText 原始文本内容
- * @returns 最佳匹配结果或null
- */
-export function findBestMatch(domPath: string, fileContent: string, fileType: string, originalText: string): MatchResult | null {
-  let bestMatch: MatchResult | null = null;
-  
-  // 1. 尝试基于ID的快速匹配（最高优先级）
-  const idMatch = matchById(domPath, fileContent, fileType);
-  if (idMatch && idMatch.score > (bestMatch?.score || 0)) {
-    bestMatch = idMatch;
-    // 如果ID匹配分数很高，可以直接返回
-    if (idMatch.score >= 0.9) {
-      return bestMatch;
-    }
-  }
-  
-  // 2. 尝试基于DOM结构的匹配（中等优先级）
-  const structureMatch = matchByDomStructure(domPath, fileContent, fileType);
-  if (structureMatch && structureMatch.score > (bestMatch?.score || 0)) {
-    bestMatch = structureMatch;
-  }
-  
-  // 3. 最后尝试基于内容变体的匹配（兜底策略）
-  const contentVariants = generateContentVariants(originalText);
-  
-  // Vue文件特殊处理
-  let contentToSearch = fileContent;
-  if ((fileType === 'vue' || fileType === '.vue')) {
-    const templateMatch = fileContent.match(/\u003ctemplate[\s\S]*?\u003e([\s\S]*?)\u003c\/template\u003e/);
-    if (templateMatch) {
-      contentToSearch = templateMatch[1];
-    }
-  }
-  
-  // 尝试所有内容变体
-  for (let i = 0; i < contentVariants.length; i++) {
-    const variant = contentVariants[i];
-    if (!variant.trim()) continue; // 跳过空变体
-    
-    const index = contentToSearch.indexOf(variant);
-    if (index !== -1) {
-      // 内容匹配的分数基础为0.7，但可以根据匹配质量调整
-      let contentScore = 0.7;
-      
-      // 如果是原始内容匹配，分数更高
-      if (i === 0) contentScore += 0.1;
-      
-      // 如果文本较长且完全匹配，分数更高
-      if (variant.length > 20) contentScore += 0.1;
-      
-      // 如果这是更好的匹配，更新最佳匹配
-      if (contentScore > (bestMatch?.score || 0)) {
-        bestMatch = {
-          score: contentScore,
-          start: index,
-          end: index + variant.length,
-          variantIndex: i
-        };
-      }
-    }
-  }
-  
-  return bestMatch;
-}
-
-/**
-  // 注：内容变体匹配逻辑已移至服务器端实现
-  return [...new Set(variants)]
-}
-
-/**
  * 开始编辑内容的入口函数
  * @param element 目标元素
  * @param sourceFiles 源文件路径数组
@@ -387,11 +142,11 @@ export async function startEditContent(element: HTMLElement, sourceFiles: string
     // 根据匹配结果处理
     if (matches.length === 1) {
       // 单个匹配结果，直接在原始目标元素上使用contenteditable属性开启编辑
-      await openEditor(element, sourceFiles, originalContent, debug, 0, originalContent)
+      await openEditor(element, sourceFiles, originalContent, debug, 0, originalContent, matches[0])
     } else if (matches.length > 1) {
       // 多个匹配结果，调用抽屉插件显示多个匹配结果供用户选择
       showSearchResultSelector(matches, async (selectedIndex) => {
-        await openEditor(element, sourceFiles, originalContent, debug, selectedIndex, originalContent)
+        await openEditor(element, sourceFiles, originalContent, debug, selectedIndex, originalContent, matches[selectedIndex])
       })
     } else {
       throw new Error('未找到匹配内容，无法开启编辑模式')
@@ -404,9 +159,25 @@ export async function startEditContent(element: HTMLElement, sourceFiles: string
 /**
  * 打开编辑器
  */
-async function openEditor(element: HTMLElement, sourceFiles: string[], originalContent: string, debug: boolean, selectedIndex: number = 0, matchedVariant: string | null = null) {
+async function openEditor(element: HTMLElement, sourceFiles: string[], originalContent: string, debug: boolean, selectedIndex: number = 0, matchedVariant: string | null = null, selectedMatch?: ContentMatch) {
   // 保存原始样式，用于恢复
-  const originalStyle = element.style.cssText
+  const originalStyle = element.style.cssText;
+  
+  // 为元素生成唯一键并存储到全局Map
+  const elementKey = getElementKey(element);
+  element.setAttribute('data-element-key', elementKey); // 临时存储键用于后续查找
+  
+  // 创建并存储编辑状态到全局Map
+  editStates.set(elementKey, {
+    originalContent,
+    matchedVariant: matchedVariant || undefined,
+    selectedMatch,
+    originalStyle
+  });
+  
+  if (debug) {
+    console.log('[easyEditor] 为元素创建编辑状态:', elementKey);
+  }
 
   // 创建编辑工具栏
   const editToolbar = document.createElement('div')
@@ -442,15 +213,9 @@ async function openEditor(element: HTMLElement, sourceFiles: string[], originalC
 
   // 保存按钮点击事件
   saveBtn.addEventListener('click', async () => {
-    // 保存原始内容和匹配成功的变体到元素的data属性中
-    element.setAttribute('data-original-content', originalContent);
-    if (matchedVariant) {
-      element.setAttribute('data-matched-variant', matchedVariant);
-      if (debug) {
-        console.log('[easyEditor] 保存匹配变体到元素属性:', matchedVariant.substring(0, 50) + (matchedVariant.length > 50 ? '...' : ''));
-      }
-    }
-    await saveContent(element, sourceFiles, editToolbar, originalStyle, debug)
+    // 注意：编辑状态已在openEditor函数中存储到全局Map，不需要再保存到元素属性
+    // 直接调用保存函数
+    await saveContent(element, sourceFiles, editToolbar, originalStyle, debug, selectedMatch)
   })
 
   // 取消按钮点击事件
@@ -496,42 +261,57 @@ export { ContentMatch }
  * @param toolbar 工具栏元素
  * @param originalStyle 原始样式
  * @param debug 是否启用调试日志
+ * @param selectedMatch 用户选择的单个匹配结果
  */
-async function saveContent(
-  element: HTMLElement,
-  sourceFiles: string[],
-  toolbar: HTMLElement,
-  originalStyle: string,
-  debug: boolean = false
-) {
+async function saveContent(element: HTMLElement, sourceFiles: string[], toolbar: HTMLElement, originalStyle: string, debug: boolean = false, selectedMatch?: ContentMatch) {
   try {
     // 获取新内容
     const newContent = element.innerHTML;
     
+    // 从全局Map获取元素的编辑状态
+    const elementKey = element.getAttribute('data-element-key');
+    const editState = elementKey ? editStates.get(elementKey) : null;
+    
     // 确定用于替换的旧内容（使用匹配的原始内容或元素的原始内容）
-    const oldContentForReplacement = element.getAttribute('data-matched-variant') || element.getAttribute('data-original-content') || element.innerHTML;
+    // 优先使用全局存储中的内容，其次回退到直接获取
+    const oldContentForReplacement = editState?.matchedVariant || editState?.originalContent || element.innerHTML;
     
     // 检查内容是否有变化
     if (newContent === oldContentForReplacement) {
       // 内容未变化，直接取消编辑
-      cleanupEdit(element, toolbar, element.getAttribute('data-original-content') || newContent, originalStyle);
+        console.log("【保存失败】内容未变化，无需保存。");
+        // 从全局Map获取原始内容
+        const elementKey = element.getAttribute('data-element-key');
+        const editState = elementKey ? editStates.get(elementKey) : null;
+        cleanupEdit(element, toolbar, editState?.originalContent || newContent, originalStyle);
 
       return;
     }
 
+    // 确定要使用的文件路径 - 优先使用选中的匹配结果中的文件路径
+    const filePath = selectedMatch ? [selectedMatch.file] : sourceFiles;
+    
+    // 准备API请求数据，包含行号信息
+    const requestBody = {
+      files: filePath, // 只传递选中的单个匹配结果的文件路径
+      content: {
+        old: oldContentForReplacement,
+        new: newContent
+      }
+    };
+    
+    // 如果有选中的匹配结果，添加行号信息
+    if (selectedMatch && selectedMatch.line) {
+      requestBody.line = selectedMatch.line;
+    }
+    
     // 调用update-content接口保存内容
     const response = await fetch('/api/easy-editor/update-content', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        files: sourceFiles, // 保持与update-content.ts接口兼容性
-        content: {
-          old: oldContentForReplacement,
-          new: newContent
-        }
-      })
+      body: JSON.stringify(requestBody)
     });
 
     // 解析响应体，获取更新结果
@@ -607,21 +387,30 @@ function cleanupEdit(
   originalContent: string,
   originalStyle: string
 ) {
-  // 恢复原始内容
-  element.innerHTML = originalContent
+  // 从全局Map删除编辑状态
+  const elementKey = element.getAttribute('data-element-key');
+  if (elementKey) {
+    editStates.delete(elementKey);
+  }
 
-  // 恢复元素状态
-  element.removeAttribute('contenteditable')
-  element.classList.remove('content-editable-active')
-  element.style.cssText = originalStyle
-  element.removeAttribute('aria-label')
-  element.removeAttribute('role')
+  // 恢复原始内容
+  element.innerHTML = originalContent;
+  
+  // 恢复原始样式
+  element.style.cssText = originalStyle;
+
+  // 移除编辑相关的属性
+  element.removeAttribute('contenteditable');
+  element.classList.remove('content-editable-active');
+  element.removeAttribute('data-element-key'); // 移除临时存储的键
+  element.removeAttribute('role');
+  element.removeAttribute('aria-label');
 
   // 移除工具栏
-  toolbar.remove()
+  toolbar.remove();
 
   // 移除事件监听
-  cleanupEventListeners(element, toolbar)
+  cleanupEventListeners(element, toolbar);
 
   // 设置编辑器状态为非编辑中
   editorState.isEditing = false;
@@ -646,26 +435,55 @@ function cleanupEventListeners(element: HTMLElement, toolbar: HTMLElement) {
  * 显示搜索结果选择器（多个匹配结果时调用抽屉插件）
  */
 function showSearchResultSelector(matches: ContentMatch[], onSelect: (index: number) => void) {
-  if (window.__NUXT__) {
-    // 调用Nuxt的组件挂载机制来显示抽屉插件
-
+  // 直接使用Vue创建并挂载searchResult组件，不依赖事件机制
+  try {
+    // 创建挂载容器
+    const container = document.createElement('div');
+    document.body.appendChild(container);
     
-    // 通过全局变量传递匹配结果和回调函数
-    window.__EASY_EDITOR_MATCHES__ = matches;
-    window.__EASY_EDITOR_SELECT_CALLBACK__ = onSelect;
-    
-    // 触发抽屉显示事件
-    const event = new CustomEvent('easy-editor:show-drawer', {
-      detail: {
-        component: '/runtime/components/searchResult.vue',
-        props: {
+    // 创建Vue应用实例并挂载组件
+    const app = createApp(defineComponent({
+      components: {
+        searchResult
+      },
+      setup() {
+        const isVisible = ref(true);
+        const title = ref('选择编辑内容');
+        
+        const handleClose = () => {
+          app.unmount();
+          container.remove();
+        };
+        
+        const handleSelect = (index: number) => {
+          onSelect(index);
+          app.unmount();
+          container.remove();
+        };
+        
+        return {
+          isVisible,
+          title,
           matches,
-          onSelect
-        }
+          handleClose,
+          handleSelect
+        };
+      },
+      render() {
+        return h(searchResult, {
+          isVisible: this.isVisible,
+          title: this.title,
+          matches: this.matches,
+          direction: 'right',
+          onClose: this.handleClose,
+          onSelect: this.handleSelect
+        });
       }
-    });
-    window.dispatchEvent(event);
-  } else {
+    }));
+    
+    app.mount(container);
+  } catch (error) {
+    console.error('抽屉插件加载失败，使用备用方案', error);
     // 降级方案：使用简单的模态框（备用方案）
     
     // 创建临时容器
